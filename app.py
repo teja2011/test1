@@ -35,6 +35,7 @@ class Message(Base):
     recipient_id = Column(Integer, ForeignKey('users.id'), nullable=True)
     content = Column(String(1000), nullable=False)
     created_at = Column(DateTime, default=datetime.now)
+    file_type = Column(String(20), nullable=True)  # 'image', 'file', или None для текста
 
 def init_db():
     Base.metadata.create_all(engine)
@@ -163,7 +164,14 @@ def api_messages(recipient_id=None):
         result = []
         for m in msgs:
             sender = db.query(User).filter_by(id=m.sender_id).first()
-            result.append({'id': m.id, 'sender': sender.username if sender else 'Unknown', 'content': m.content, 'created_at': m.created_at.strftime('%H:%M'), 'is_mine': m.sender_id == user.id})
+            result.append({
+                'id': m.id,
+                'sender': sender.username if sender else 'Unknown',
+                'content': m.content,
+                'created_at': m.created_at.strftime('%H:%M'),
+                'is_mine': m.sender_id == user.id,
+                'file_type': m.file_type
+            })
         return jsonify(result)
     finally:
         db.close()
@@ -181,6 +189,37 @@ def api_send():
     db = get_db()
     try:
         db.add(Message(sender_id=user.id, recipient_id=recipient_id if recipient_id else None, content=content))
+        db.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        db.rollback()
+        return jsonify({'success': False, 'message': str(e)})
+    finally:
+        db.close()
+
+@app.route('/api/send-file', methods=['POST'])
+def api_send_file():
+    """Отправка файла (изображения или другого файла)"""
+    user = get_current_user()
+    if not user:
+        return jsonify({'success': False, 'message': 'Not authorized'})
+    
+    recipient_id = request.form.get('recipient_id')
+    file_data = request.form.get('file_data')  # Base64 данные
+    file_type = request.form.get('file_type')  # 'image' или 'file'
+    
+    if not file_data:
+        return jsonify({'success': False, 'message': 'No file data'})
+    
+    db = get_db()
+    try:
+        # Сохраняем файл в сообщении как base64
+        db.add(Message(
+            sender_id=user.id,
+            recipient_id=recipient_id if recipient_id else None,
+            content=file_data,
+            file_type=file_type
+        ))
         db.commit()
         return jsonify({'success': True})
     except Exception as e:

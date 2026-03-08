@@ -224,22 +224,39 @@ def api_register():
     data = request.json
     username = data.get('username', '').strip()
     password = data.get('password', '')
+    
+    print(f"=== РЕГИСТРАЦИЯ ===")
+    print(f"Username: {username}")
+    print(f"Password получен: {'да' if password else 'нет'}")
+    print(f"Длина пароля: {len(password) if password else 0}")
+    
     if not username or len(username) < 2:
-        return jsonify({'success': False, 'message': 'Username too short'})
+        return jsonify({'success': False, 'message': 'Имя слишком короткое'})
     if not password or len(password) < 6:
-        return jsonify({'success': False, 'message': 'Password too short'})
+        return jsonify({'success': False, 'message': 'Пароль должен быть не менее 6 символов'})
+    
     db = get_db()
     try:
-        if db.query(User).filter_by(username=username).first():
-            return jsonify({'success': False, 'message': 'User exists'})
-        user = User(username=username, password_hash=generate_password_hash(password), avatar_color=generate_avatar_color())
+        existing = db.query(User).filter_by(username=username).first()
+        if existing:
+            return jsonify({'success': False, 'message': 'Пользователь уже существует'})
+        
+        password_hash = generate_password_hash(password)
+        print(f"password_hash сгенерирован: {password_hash[:50]}...")
+        
+        user = User(username=username, password_hash=password_hash, avatar_color=generate_avatar_color())
         db.add(user)
         db.commit()
+        
+        print(f"Пользователь создан: id={user.id}, username={user.username}")
+        print(f"password_hash в БД: {user.password_hash[:50] if user.password_hash else 'NULL'}...")
+        
         resp = make_response(jsonify({'success': True, 'user': {'id': user.id, 'username': user.username, 'avatar_color': user.avatar_color}}))
         resp.set_cookie('username', username, max_age=60*60*24*30, samesite='lax')
         return resp
     except Exception as e:
         db.rollback()
+        print(f"Ошибка регистрации: {e}")
         return jsonify({'success': False, 'message': str(e)})
     finally:
         db.close()
@@ -249,26 +266,44 @@ def api_login():
     data = request.json
     username = data.get('username', '').strip()
     password = data.get('password', '')
-    
+
+    print(f"=== ВХОД ===")
+    print(f"Username: {username}")
+    print(f"Password получен: {'да' if password else 'нет'}")
+
     if not username or len(username) < 2:
         return jsonify({'success': False, 'message': 'Имя слишком короткое'})
     if not password or len(password) < 6:
         return jsonify({'success': False, 'message': 'Пароль должен быть не менее 6 символов'})
-    
+
     db = get_db()
     try:
         user = db.query(User).filter_by(username=username).first()
+        
         if not user:
+            print(f"Пользователь '{username}' не найден")
             return jsonify({'success': False, 'message': 'Пользователь не найден'})
+        
+        print(f"Пользователь найден: id={user.id}")
+        print(f"password_hash в БД: {user.password_hash[:50] if user.password_hash else 'NULL'}...")
+        
         if not user.password_hash:
+            print("password_hash пуст!")
             return jsonify({'success': False, 'message': 'Неверный пароль'})
-        if not check_password_hash(user.password_hash, password):
+        
+        is_valid = check_password_hash(user.password_hash, password)
+        print(f"Проверка пароля: {'OK' if is_valid else 'FAIL'}")
+        
+        if not is_valid:
             return jsonify({'success': False, 'message': 'Неверный пароль'})
+        
+        print(f"Вход успешен: {username}")
         resp = make_response(jsonify({'success': True, 'user': {'id': user.id, 'username': user.username, 'avatar_color': user.avatar_color}}))
         resp.set_cookie('username', username, max_age=60*60*24*30, samesite='lax')
         return resp
     except Exception as e:
         db.rollback()
+        print(f"Ошибка входа: {e}")
         return jsonify({'success': False, 'message': str(e)})
     finally:
         db.close()
