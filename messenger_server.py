@@ -404,7 +404,7 @@ def init_tables():
         print(f"DATABASE_URL: {DATABASE_URL or 'SQLite (messenger.db)'}")
         return False
 
-# Инициализируем таблицы при загрузке
+# Инициализируем таблицы при загрузке модуля
 if not init_tables():
     print("ВНИМАНИЕ: Сервер запущен с ошибками БД. Проверьте подключение!")
 
@@ -650,13 +650,12 @@ def api_users():
     user = get_current_user()
     if not user:
         return jsonify([])
-    
+
     # Проверяем кэш
-    cache_key = f'user_{user.id}'
-    cached_data = cache.get('users_list', cache_key)
+    cached_data = cache.get('users_list', None)
     if cached_data:
         return jsonify(cached_data)
-    
+
     db = get_db()
     try:
         users = db.query(User).filter(User.id != user.id).all()
@@ -665,41 +664,39 @@ def api_users():
         for u in users:
             # Считаем онлайн если last_seen был в последние 30 секунд
             is_online = False
-            last_seen_str = None
             last_seen_full = None
-            if u.last_seen:
-                # Конвертируем UTC время в Московское (UTC+3)
-                last_seen_utc = u.last_seen
-                # Если время без timezone, считаем что это UTC
-                if last_seen_utc.tzinfo is None:
-                    last_seen_utc = last_seen_utc.replace(tzinfo=timezone.utc)
-                # Добавляем 3 часа для Москвы
-                last_seen_moscow = last_seen_utc + timedelta(hours=3)
-                last_seen_str = last_seen_moscow.strftime('%H:%M')
-                # Полная дата и время для отображения
-                today = now.replace(hour=0, minute=0, second=0, microsecond=0)
-                last_seen_date = last_seen_moscow.replace(tzinfo=None)
-                if last_seen_date >= today:
-                    # Сегодня
-                    last_seen_full = 'сегодня в ' + last_seen_moscow.strftime('%H:%M')
-                else:
-                    # Не сегодня - показываем дату
-                    last_seen_full = last_seen_moscow.strftime('%d.%m.%Y в %H:%M')
-                diff = (now - last_seen_utc).total_seconds()
-                is_online = diff < 30  # Онлайн если активен в последние 30 секунд
+            try:
+                if u.last_seen:
+                    last_seen_utc = u.last_seen
+                    if last_seen_utc.tzinfo is None:
+                        last_seen_utc = last_seen_utc.replace(tzinfo=timezone.utc)
+                    last_seen_moscow = last_seen_utc + timedelta(hours=3)
+                    today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+                    last_seen_date = last_seen_moscow.replace(tzinfo=None)
+                    if last_seen_date >= today:
+                        last_seen_full = 'сегодня в ' + last_seen_moscow.strftime('%H:%M')
+                    else:
+                        last_seen_full = last_seen_moscow.strftime('%d.%m.%Y в %H:%M')
+                    diff = (now - last_seen_utc).total_seconds()
+                    is_online = diff < 30
+            except Exception as e:
+                print(f"Ошибка обработки last_seen: {e}")
+
             result.append({
                 'id': u.id,
                 'username': u.username,
                 'jt_username': u.jt_username,
                 'avatar_color': u.avatar_color or '6366f1',
-                'last_seen': last_seen_str,
                 'last_seen_full': last_seen_full,
                 'is_online': is_online
             })
 
         # Сохраняем в кэш
-        cache.set('users_list', result, cache_key, ttl=USERS_LIST_CACHE_TTL)
+        cache.set('users_list', result, ttl=USERS_LIST_CACHE_TTL)
         return jsonify(result)
+    except Exception as e:
+        print(f"❌ api_users ошибка: {e}")
+        return jsonify({'error': str(e)}), 500
     finally:
         db.close()
 
@@ -1096,6 +1093,59 @@ def api_change_username():
         db.close()
         return jsonify({'success': False, 'message': str(e)})
 
+@app.route('/api/last-messages')
+def api_last_messages():
+    """
+    Получить последние сообщения для каждого пользователя
+    Возвращает список последних сообщений для всех контактов текущего пользователя
+    GET /api/last-messages
+    """
+    user = get_current_user()
+    if not user:
+        return jsonify([])
+
+    db = get_db()
+    try:
+        # Получаем всех пользователей
+        all_users = db.query(User).filter(User.id != user.id).all()
+
+        result = []
+        for other_user in all_users:
+            # Получаем последнее сообщение в переписке с этим пользователем
+            last_msg = db.query(Message).filter(
+                or_(
+                    and_(Message.sender_id == user.id, Message.recipient_id == other_user.id),
+                    and_(Message.sender_id == other_user.id, Message.recipient_id == user.id)
+                )
+            ).order_by(Message.created_at.desc()).first()
+
+            if last_msg:
+                # Конвертируем время в Московское (UTC+3)
+                msg_time = last_msg.created_at
+                if msg_time.tzinfo is None:
+                    msg_time = msg_time.replace(tzinfo=timezone.utc)
+                msg_time_moscow = msg_time + timedelta(hours=3)
+                time_str = msg_time_moscow.strftime('%H:%M')
+
+                # Определяем статус
+                msg_status = last_msg.status or 'sent'
+
+                result.append({
+                    'recipient_id': other_user.id,
+                    'content': last_msg.content,
+                    'time': time_str,
+                    'is_mine': last_msg.sender_id == user.id,
+                    'status': msg_status,
+                    'file_type': last_msg.file_type
+                })
+
+        return jsonify(result)
+    except Exception as e:
+        print(f"Ошибка получения последних сообщений: {e}")
+        return jsonify([])
+    finally:
+        db.close()
+
 import re
 
 def validate_jt_username(username):
@@ -1377,8 +1427,12 @@ if __name__ == '__main__':
         reset_db()
         print("\nБаза данных сброшена. Запускайте сервер.")
         sys.exit(0)
-    
+
     print("\n=== Сервер запущен ===")
     print("Откройте в браузере: http://localhost:5000")
     print("Для остановки нажмите Ctrl+C\n")
+    
+    # Инициализируем таблицы при локальном запуске
+    init_tables()
+    
     app.run(host='0.0.0.0', port=5000, debug=False)
