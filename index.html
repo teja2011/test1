@@ -846,6 +846,7 @@
         var notificationsInterval = null;
         var lastMessagesMap = {};
         var lastMessagesInterval = null;
+        var currentSearchQuery = '';
 
         // Вспомогательная функция для fetch с credentials
         function apiFetch(url, options) {
@@ -968,6 +969,7 @@
                     users = data;
                     document.getElementById('usersCount').textContent = users.length;
                     renderUsers();
+                    applySearchFilter();
                     loadLastMessages();
                 });
         }
@@ -984,6 +986,7 @@
                         lastMessagesMap[msg.recipient_id || 'general'] = msg;
                     });
                     renderUsers();
+                    applySearchFilter();
                 })
                 .catch(function(err) {
                     console.error('Ошибка загрузки последних сообщений:', err);
@@ -1057,6 +1060,7 @@
         function filterUsers() {
             var searchInput = document.getElementById('userSearchInput');
             var query = searchInput.value.trim().toLowerCase();
+            currentSearchQuery = query;
 
             var container = document.getElementById('usersList');
             var userItems = container.getElementsByClassName('user-item');
@@ -1073,11 +1077,21 @@
                 var jtUsername = item.textContent.toLowerCase();
 
                 // Ищем по имени или @username
-                if (userName.includes(query) || jtUsername.includes('@' + query)) {
+                if (query === '' || userName.includes(query) || jtUsername.includes('@' + query)) {
                     item.style.display = '';
                 } else {
                     item.style.display = 'none';
                 }
+            }
+        }
+
+        function applySearchFilter() {
+            if (currentSearchQuery !== '') {
+                var searchInput = document.getElementById('userSearchInput');
+                if (searchInput) {
+                    searchInput.value = currentSearchQuery;
+                }
+                filterUsers();
             }
         }
 
@@ -1222,10 +1236,8 @@
 
             // Переключаемся на вид чата (для мобильных)
             showChatView();
-            // Скрываем навигацию при открытии чата (кроме общего чата)
-            if (userId === 0) {
-                showFooter();
-            } else {
+            // Скрываем навигацию при открытии личного чата (но не общего)
+            if (userId !== 0) {
                 hideFooter();
             }
         }
@@ -1696,10 +1708,9 @@
                 loadLastMessages();
             }, 5000);
 
-            // Скрываем навигацию по умолчанию (показываем только в списке чатов)
-            hideFooter();
-            // Инициализируем вкладки
+            // Инициализируем вкладки и показываем навигацию
             initTabs();
+            showFooter();
         }
 
         // Обработка изменения размера (когда появляется клавиатура)
