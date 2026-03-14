@@ -2076,7 +2076,14 @@
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({username: newUsername})
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) {
+                var contentType = r.headers.get('content-type');
+                if (contentType && contentType.indexOf('application/json') !== -1) {
+                    return r.json();
+                } else {
+                    throw new Error('Сервер вернул не JSON: ' + r.status);
+                }
+            })
             .then(function(result) {
                 if (result.success) {
                     document.cookie = 'username=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
@@ -2087,6 +2094,11 @@
                 }
             })
             .catch(function(err) {
+                // Игнорируем ошибку отмены запроса
+                if (err.name === 'AbortError') {
+                    console.log('Запрос отменён');
+                    return;
+                }
                 console.error('Ошибка смены ника:', err);
                 alert('Ошибка: ' + err.message);
             });
@@ -2283,7 +2295,7 @@
             return apiFetch('/api/username/set', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({username: username})
+                body: JSON.stringify({jt_username: username})
             })
             .then(function(r) { return r.json(); });
         }
@@ -2377,7 +2389,14 @@
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({username: newUsername})
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) {
+                var contentType = r.headers.get('content-type');
+                if (contentType && contentType.indexOf('application/json') !== -1) {
+                    return r.json();
+                } else {
+                    throw new Error('Сервер вернул не JSON: ' + r.status);
+                }
+            })
             .then(function(result) {
                 if (result.success) {
                     // Удалям старый cookie username
@@ -2389,6 +2408,11 @@
                 }
             })
             .catch(function(err) {
+                // Игнорируем ошибку отмены запроса
+                if (err.name === 'AbortError') {
+                    console.log('Запрос отменён');
+                    return;
+                }
                 console.error('Ошибка смены ника:', err);
                 alert('Ошибка: ' + err.message);
             });
