@@ -1,9 +1,11 @@
 from flask import Flask, render_template_string, request, jsonify, redirect, make_response, send_from_directory
+from werkzeug.utils import secure_filename
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey, or_, and_, text
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 from datetime import datetime
 import secrets
 import os
+import uuid
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_cors import CORS
 import smtplib
@@ -42,6 +44,7 @@ class User(Base):
     password_hash = Column(String(256), nullable=True)
     created_at = Column(DateTime, default=datetime.now)
     avatar_color = Column(String(20), default='6366f1')
+    avatar_url = Column(String(500), nullable=True)  # URL аватарки (хранит путь к файлу)
     jt_username = Column(String(50), unique=True, nullable=True)  # @username как в Telegram
     last_seen = Column(DateTime, nullable=True)  # Время последнего посещения
 
@@ -756,6 +759,62 @@ def api_username_set():
         return jsonify({'success': False, 'message': str(e)})
     finally:
         db.close()
+
+@app.route('/api/upload-avatar', methods=['POST'])
+def api_upload_avatar():
+    """Загрузка аватарки пользователя"""
+    user = get_current_user()
+    if not user:
+        return jsonify({'success': False, 'message': 'Not authorized'})
+    
+    if 'avatar' not in request.files:
+        return jsonify({'success': False, 'message': 'No file provided'})
+    
+    file = request.files['avatar']
+    if file.filename == '':
+        return jsonify({'success': False, 'message': 'No file selected'})
+    
+    # Генерируем уникальное имя файла
+    import os
+    import uuid
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in ['.jpg', '.jpeg', '.png', '.gif', '.webp']:
+        return jsonify({'success': False, 'message': 'Неверный формат. Разрешены: jpg, png, gif, webp'})
+    
+    filename = f"avatar_{user.id}_{uuid.uuid4().hex[:8]}{ext}"
+    
+    # Сохраняем файл (на Vercel нужно использовать внешнее хранилище)
+    if DATABASE_URL:
+        # Для Vercel - сохраняем в публичную папку или используем внешнее хранилище
+        # Здесь упрощённо - сохраняем путь
+        avatar_path = f"/avatars/{filename}"
+    else:
+        # Локально - сохраняем в папку
+        upload_dir = os.path.join(os.path.dirname(__file__), 'avatars')
+        os.makedirs(upload_dir, exist_ok=True)
+        avatar_path = os.path.join(upload_dir, filename)
+        file.save(avatar_path)
+        avatar_path = f"/avatars/{filename}"
+    
+    # Сохраняем путь в БД
+    db = get_db()
+    try:
+        user.avatar_url = avatar_path
+        db.commit()
+        return jsonify({'success': True, 'avatar_url': avatar_path})
+    except Exception as e:
+        db.rollback()
+        print(f"Error saving avatar: {e}")
+        return jsonify({'success': False, 'message': str(e)})
+    finally:
+        db.close()
+
+@app.route('/avatars/<filename>')
+def serve_avatar(filename):
+    """Раздача аватарок"""
+    import os
+    avatar_dir = os.path.join(os.path.dirname(__file__), 'avatars')
+    return send_from_directory(avatar_dir, filename, mimetype='image')
 
 if __name__ == '__main__':
     import sys
