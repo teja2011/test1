@@ -1,4 +1,4 @@
-from flask import Flask, render_template_string, request, jsonify, redirect, make_response
+from flask import Flask, render_template_string, request, jsonify, redirect, make_response, send_from_directory
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey, or_, and_, text
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 from datetime import datetime
@@ -8,6 +8,9 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from flask_cors import CORS
 import smtplib
 
+# Получаем директорию текущего файла
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+
 # Настройка БД - Neon PostgreSQL или SQLite
 DATABASE_URL = os.environ.get('DATABASE_URL')
 if DATABASE_URL:
@@ -16,7 +19,7 @@ else:
     engine = create_engine('sqlite:///messenger.db', echo=False, connect_args={'check_same_thread': False})
 
 SECRET_KEY = os.environ.get('SECRET_KEY', secrets.token_hex(32))
-app = Flask(__name__)
+app = Flask(__name__, static_folder=CURRENT_DIR, static_url_path='')
 app.secret_key = SECRET_KEY
 CORS(app, supports_credentials=True)
 Base = declarative_base()
@@ -627,6 +630,14 @@ def api_change_username():
         print(f"❌ change-username: ошибка базы данных: {e}")
         db.close()
         return jsonify({'success': False, 'message': str(e)})
+
+# Route для статических файлов (для Vercel)
+@app.route('/<path:filename>')
+def serve_static( filename):
+    """Раздача статических файлов"""
+    if filename.endswith(('.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico', '.css', '.js', '.map')):
+        return send_from_directory(CURRENT_DIR, filename)
+    return redirect('/')
 
 if __name__ == '__main__':
     import sys
