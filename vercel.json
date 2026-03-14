@@ -2,18 +2,23 @@
   "version": 2,
   "builds": [
     {
-      "src": "api/index.py",
+      "src": "index.py",
       "use": "@vercel/python"
     }
   ],
   "routes": [
     {
       "src": "/api/(.*)",
-      "dest": "api/index.py"
+      "dest": "index.py"
+    },
+    {
+      "src": "/(.*\\.(png|jpg|jpeg|gif|svg|ico|css|js|map))",
+      "dest": "/$1"
     },
     {
       "src": "/(.*)",
-      "dest": "api/index.py"
+      "dest": "index.py"
     }
-  ]
+  ],
+  "outputDirectory": "public"
 }
