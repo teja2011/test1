@@ -218,6 +218,11 @@ def serve_sw():
     """Раздача Service Worker"""
     return send_from_directory('.', 'sw.js', mimetype='application/javascript')
 
+@app.route('/Jetesk.png')
+def serve_logo():
+    """Раздача логотипа"""
+    return send_from_directory('.', 'Jetesk.png', mimetype='image/png')
+
 @app.route('/api/me')
 def api_me():
     user = get_current_user()
@@ -685,6 +690,36 @@ def api_heartbeat():
     if not user:
         return jsonify({'success': False})
     return jsonify({'success': True, 'user_id': user.id})
+
+@app.route('/api/messages/mark-read', methods=['POST'])
+def api_mark_read():
+    """Отметить сообщения как прочитанные"""
+    user = get_current_user()
+    if not user:
+        return jsonify({'success': False})
+    
+    data = request.json
+    sender_id = data.get('sender_id')
+    
+    if not sender_id:
+        return jsonify({'success': False, 'message': 'No sender_id'})
+    
+    db = get_db()
+    try:
+        # Помечаем сообщения как прочитанные (обновляем статус)
+        db.query(Message).filter(
+            Message.sender_id == sender_id,
+            Message.recipient_id == user.id,
+            Message.status != 'read'
+        ).update({'status': 'read'}, synchronize_session=False)
+        db.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        db.rollback()
+        print(f"Error marking messages as read: {e}")
+        return jsonify({'success': False, 'message': str(e)})
+    finally:
+        db.close()
 
 if __name__ == '__main__':
     import sys
