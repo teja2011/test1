@@ -187,12 +187,6 @@ def serve_sw():
     """Раздача Service Worker"""
     return send_from_directory('.', 'sw.js', mimetype='application/javascript')
 
-@app.route('/Jetesk.png')
-def serve_logo():
-    """Раздача логотипа"""
-    import os
-    return send_from_directory(os.path.dirname(__file__), 'Jetesk.png', mimetype='image/png')
-
 @app.route('/api/me')
 def api_me():
     user = get_current_user()
