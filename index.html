@@ -778,6 +778,16 @@
             <p class="modal-subtitle">Управление аккаунтом и данными</p>
 
             <div class="input-group" style="margin-bottom: 16px;">
+                <label style="font-size: 14px; margin-bottom: 8px;">🔔 Push-уведомления</label>
+                <button id="pushToggleBtn" class="modal-btn" style="background: var(--primary); width: 100%;">🔕 Включить уведомления</button>
+                <p id="pushStatus" style="font-size: 12px; color: var(--text-secondary); text-align: center; margin-top: 8px;">
+                    Получайте уведомления о новых сообщениях
+                </p>
+            </div>
+
+            <hr style="border: none; border-top: 1px solid var(--border); margin: 20px 0;">
+
+            <div class="input-group" style="margin-bottom: 16px;">
                 <label style="font-size: 14px; margin-bottom: 8px;">@ Username</label>
                 <div style="display: flex; gap: 8px; align-items: center;">
                     <input type="text" id="settingsJtUsernameInput" placeholder="@username" maxlength="32"
@@ -847,6 +857,228 @@
         var lastMessagesMap = {};
         var lastMessagesInterval = null;
         var currentSearchQuery = '';
+        var pushSubscription = null;
+        var vapidPublicKey = null;
+
+        // ============================================
+        // WEB PUSH NOTIFICATIONS
+        // ============================================
+
+        // Инициализация push-уведомлений
+        function initPushNotifications() {
+            if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+                console.log('[Push] Push notifications not supported');
+                return;
+            }
+
+            // Регистрируем Service Worker
+            navigator.serviceWorker.register('/sw.js')
+                .then(function(registration) {
+                    console.log('[Push] Service Worker registered:', registration.scope);
+                    
+                    // Проверяем статус подписки
+                    checkPushStatus();
+                })
+                .catch(function(err) {
+                    console.error('[Push] SW registration failed:', err);
+                });
+        }
+
+        // Проверка статуса подписки
+        function checkPushStatus() {
+            apiFetch('/api/push/status')
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (data.subscribed) {
+                        console.log('[Push] Already subscribed');
+                        // Проверяем активную подписку
+                        return navigator.serviceWorker.ready;
+                    } else {
+                        console.log('[Push] Not subscribed');
+                        // Можно предложить подписаться
+                        updatePushStatus();
+                        return null;
+                    }
+                })
+                .then(function(registration) {
+                    if (registration) {
+                        return registration.pushManager.getSubscription();
+                    }
+                    return null;
+                })
+                .then(function(subscription) {
+                    pushSubscription = subscription;
+                    updatePushStatus();
+                    if (!subscription) {
+                        // Подписки нет, но сервер говорит что подписан - нужно переподписаться
+                        checkPushSupportAndSubscribe();
+                    }
+                })
+                .catch(function(err) {
+                    console.error('[Push] Error checking status:', err);
+                });
+        }
+
+        // Проверка поддержки и запрос разрешения
+        function checkPushSupportAndSubscribe() {
+            if (!('Notification' in window)) {
+                console.log('[Push] Notifications not supported');
+                return;
+            }
+
+            if (Notification.permission === 'granted') {
+                subscribeToPush();
+            } else if (Notification.permission !== 'denied') {
+                Notification.requestPermission().then(function(permission) {
+                    if (permission === 'granted') {
+                        subscribeToPush();
+                    } else {
+                        console.log('[Push] Permission denied');
+                    }
+                });
+            } else {
+                console.log('[Push] Permission previously denied');
+            }
+        }
+
+        // Подписка на push-уведомления
+        function subscribeToPush() {
+            // Получаем публичный ключ
+            apiFetch('/api/push/public-key')
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    vapidPublicKey = data.public_key;
+                    console.log('[Push] VAPID public key received');
+                    
+                    return navigator.serviceWorker.ready;
+                })
+                .then(function(registration) {
+                    console.log('[Push] Subscribing to push...');
+                    
+                    // Подписываемся
+                    return registration.pushManager.subscribe({
+                        userVisibleOnly: true,
+                        applicationServerKey: urlBase64ToUint8Array(vapidPublicKey)
+                    });
+                })
+                .then(function(subscription) {
+                    console.log('[Push] Subscribed:', subscription);
+                    pushSubscription = subscription;
+                    
+                    // Отправляем подписку на сервер
+                    return apiFetch('/api/push/subscribe', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            endpoint: subscription.endpoint,
+                            p256dh: arrayBufferToBase64(subscription.getKey('p256dh')),
+                            auth: arrayBufferToBase64(subscription.getKey('auth'))
+                        })
+                    });
+                })
+                .then(function(r) { return r.json(); })
+                .then(function(result) {
+                    if (result.success) {
+                        console.log('[Push] Successfully subscribed on server');
+                    } else {
+                        console.error('[Push] Server subscription failed:', result.message);
+                    }
+                })
+                .catch(function(err) {
+                    console.error('[Push] Subscribe error:', err);
+                });
+        }
+
+        // Отписка от push-уведомлений
+        function unsubscribeFromPush() {
+            if (!pushSubscription) {
+                return Promise.resolve();
+            }
+
+            return pushSubscription.unsubscribe()
+                .then(function(success) {
+                    if (success) {
+                        console.log('[Push] Unsubscribed from browser');
+                        pushSubscription = null;
+                        
+                        // Отменяем подписку на сервере
+                        return apiFetch('/api/push/unsubscribe', {
+                            method: 'POST'
+                        });
+                    }
+                    return null;
+                })
+                .then(function() {
+                    console.log('[Push] Unsubscribed from server');
+                })
+                .catch(function(err) {
+                    console.error('[Push] Unsubscribe error:', err);
+                });
+        }
+
+        // Конвертация base64 в Uint8Array для VAPID ключа
+        function urlBase64ToUint8Array(base64String) {
+            var padding = '='.repeat((4 - base64String.length % 4) % 4);
+            var base64 = (base64String + padding)
+                .replace(/\-/g, '+')
+                .replace(/_/g, '/');
+
+            var rawData = window.atob(base64);
+            var outputArray = new Uint8Array(rawData.length);
+
+            for (var i = 0; i < rawData.length; ++i) {
+                outputArray[i] = rawData.charCodeAt(i);
+            }
+            return outputArray;
+        }
+
+        // Конвертация ArrayBuffer в base64
+        function arrayBufferToBase64(buffer) {
+            var binary = '';
+            var bytes = new Uint8Array(buffer);
+            var len = bytes.byteLength;
+            for (var i = 0; i < len; i++) {
+                binary += String.fromCharCode(bytes[i]);
+            }
+            return window.btoa(binary);
+        }
+
+        // Обновление статуса push-кнопки
+        function updatePushStatus() {
+            var btn = document.getElementById('pushToggleBtn');
+            var status = document.getElementById('pushStatus');
+            
+            if (!btn || !status) return;
+            
+            if (pushSubscription) {
+                btn.textContent = '🔕 Выключить уведомления';
+                btn.style.background = '#64748b';
+                status.textContent = 'Уведомления включены. Нажмите чтобы выключить.';
+            } else {
+                btn.textContent = '🔔 Включить уведомления';
+                btn.style.background = 'var(--primary)';
+                status.textContent = 'Получайте уведомления о новых сообщениях';
+            }
+        }
+
+        // Переключение push-уведомлений
+        function togglePushNotifications() {
+            if (pushSubscription) {
+                // Отключаем
+                unsubscribeFromPush().then(function() {
+                    pushSubscription = null;
+                    updatePushStatus();
+                });
+            } else {
+                // Включаем
+                checkPushSupportAndSubscribe();
+                updatePushStatus();
+            }
+        }
+
+        // ============================================
+        // КОНЕЦ WEB PUSH NOTIFICATIONS
+        // ============================================
 
         // Вспомогательная функция для fetch с credentials
         function apiFetch(url, options) {
@@ -1711,6 +1943,9 @@
             // Инициализируем вкладки и показываем навигацию
             initTabs();
             showFooter();
+            
+            // Инициализируем push-уведомления
+            initPushNotifications();
         }
 
         // Обработка изменения размера (когда появляется клавиатура)
@@ -1756,6 +1991,8 @@
                 input.value = '';
             }
             document.getElementById('jtUsernameStatus').textContent = '';
+            // Обновляем статус push-уведомлений
+            updatePushStatus();
         }
 
         function closeSettingsModal() {
@@ -2032,9 +2269,8 @@
                 });
         }
 
-        // ============================================
         // ФУНКЦИИ ДЛЯ РАБОТЫ С @USERNAME
-        // ============================================
+       
         
         function checkUsernameAvailability(username) {
             // Убираем @ если есть
@@ -2226,6 +2462,9 @@
         document.getElementById('markAllReadBtn').addEventListener('click', markAllAsRead);
         document.getElementById('modalSendBtn').addEventListener('click', sendPrivateMessage);
         document.getElementById('modalCloseBtn').addEventListener('click', closeModal);
+        
+        // Push notifications toggle
+        document.getElementById('pushToggleBtn').addEventListener('click', togglePushNotifications);
 
         init();
     </script>
