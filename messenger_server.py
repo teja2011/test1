@@ -721,6 +721,27 @@ def api_mark_read():
     finally:
         db.close()
 
+@app.route('/api/username/check', methods=['POST'])
+def api_username_check():
+    """Проверка доступности username"""
+    data = request.json
+    username = data.get('username', '').strip()
+    
+    if not username:
+        return jsonify({'available': False, 'message': 'Введите username'})
+    
+    db = get_db()
+    try:
+        existing = db.query(User).filter_by(username=username).first()
+        if existing:
+            return jsonify({'available': False, 'message': 'Это имя уже занято'})
+        return jsonify({'available': True})
+    except Exception as e:
+        print(f"Error checking username: {e}")
+        return jsonify({'available': False, 'message': str(e)})
+    finally:
+        db.close()
+
 if __name__ == '__main__':
     import sys
     if len(sys.argv) > 1 and sys.argv[1] == '--reset-db':
