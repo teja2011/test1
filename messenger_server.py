@@ -633,6 +633,51 @@ def api_change_username():
         db.close()
         return jsonify({'success': False, 'message': str(e)})
 
+@app.route('/api/last-messages')
+def api_last_messages():
+    """Получение последних сообщений для каждого пользователя"""
+    user = get_current_user()
+    if not user:
+        return jsonify([])
+    
+    db = get_db()
+    try:
+        # Получаем все сообщения между текущим пользователем и другими
+        msgs = db.query(Message).filter(
+            or_(
+                and_(Message.sender_id == user.id, Message.recipient_id.isnot(None)),
+                and_(Message.recipient_id == user.id, Message.sender_id.isnot(None))
+            )
+        ).order_by(Message.created_at.desc()).all()
+        
+        # Группируем по собеседнику и берём последнее сообщение
+        last_messages = {}
+        for msg in msgs:
+            partner_id = msg.recipient_id if msg.sender_id == user.id else msg.sender_id
+            if partner_id not in last_messages:
+                last_messages[partner_id] = msg
+        
+        result = []
+        for partner_id, msg in last_messages.items():
+            sender = db.query(User).filter_by(id=msg.sender_id).first()
+            result.append({
+                'id': msg.id,
+                'sender': sender.username if sender else 'Unknown',
+                'sender_id': msg.sender_id,
+                'recipient_id': msg.recipient_id,
+                'content': msg.content,
+                'created_at': msg.created_at.strftime('%H:%M'),
+                'file_type': msg.file_type,
+                'status': getattr(msg, 'status', 'sent') or 'sent'
+            })
+        
+        return jsonify(result)
+    except Exception as e:
+        print(f"Error loading last messages: {e}")
+        return jsonify([])
+    finally:
+        db.close()
+
 if __name__ == '__main__':
     import sys
     if len(sys.argv) > 1 and sys.argv[1] == '--reset-db':
