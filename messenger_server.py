@@ -1,5 +1,5 @@
 from flask import Flask, render_template_string, request, jsonify, redirect, make_response, send_from_directory
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey, or_, and_, text
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey, or_, and_, text, case
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 from datetime import datetime
 import secrets
@@ -7,9 +7,6 @@ import os
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_cors import CORS
 import smtplib
-
-# Получаем директорию текущего файла
-CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # Настройка БД - Neon PostgreSQL или SQLite
 DATABASE_URL = os.environ.get('DATABASE_URL')
@@ -19,7 +16,7 @@ else:
     engine = create_engine('sqlite:///messenger.db', echo=False, connect_args={'check_same_thread': False})
 
 SECRET_KEY = os.environ.get('SECRET_KEY', secrets.token_hex(32))
-app = Flask(__name__, static_folder=CURRENT_DIR, static_url_path='')
+app = Flask(__name__)
 app.secret_key = SECRET_KEY
 CORS(app, supports_credentials=True)
 Base = declarative_base()
@@ -215,6 +212,11 @@ def chat():
     if not user:
         return redirect('/')
     return render_template_string(HTML_TEMPLATE)
+
+@app.route('/Jetesk.png')
+def serve_logo():
+    """Раздача логотипа Jetesk.png"""
+    return send_from_directory('.', 'Jetesk.png', mimetype='image/png')
 
 @app.route('/api/me')
 def api_me():
@@ -583,6 +585,56 @@ def api_notifications_mark_single_read(notification_id):
     finally:
         db.close()
 
+@app.route('/api/last-messages')
+def api_last_messages():
+    """Получение последних сообщений для каждого пользователя"""
+    user = get_current_user()
+    if not user:
+        return jsonify([])
+    
+    db = get_db()
+    try:
+        # Получаем последние сообщения из личного чата с каждым пользователем
+        # Для каждого собеседника берём последнее сообщение
+        subquery = db.query(
+            db.func.max(Message.id).label('max_id')
+        ).filter(
+            or_(
+                and_(Message.sender_id == user.id, Message.recipient_id.isnot(None)),
+                and_(Message.recipient_id == user.id, Message.sender_id.isnot(None))
+            )
+        ).group_by(
+            case(
+                (Message.sender_id == user.id, Message.recipient_id),
+                else_=Message.sender_id
+            )
+        ).subquery()
+        
+        personal_msgs = db.query(Message).filter(
+            Message.id.in_(subquery)
+        ).all()
+        
+        result = []
+        for msg in personal_msgs:
+            sender = db.query(User).filter_by(id=msg.sender_id).first()
+            result.append({
+                'id': msg.id,
+                'sender': sender.username if sender else 'Unknown',
+                'sender_id': msg.sender_id,
+                'recipient_id': msg.recipient_id,
+                'content': msg.content,
+                'created_at': msg.created_at.strftime('%H:%M'),
+                'file_type': msg.file_type,
+                'status': msg.status or 'sent'
+            })
+        
+        return jsonify(result)
+    except Exception as e:
+        print(f"Error loading last messages: {e}")
+        return jsonify([])
+    finally:
+        db.close()
+
 @app.route('/api/settings/change-username', methods=['POST'])
 def api_change_username():
     """Сменить ник текущего пользователя"""
@@ -592,10 +644,10 @@ def api_change_username():
         return jsonify({'success': False, 'message': 'Not authorized'})
 
     print(f"✅ change-username: текущий пользователь id={user.id}, username={user.username}")
-    
+
     data = request.json
     new_username = data.get('username', '').strip()
-    
+
     print(f"📝 change-username: новый ник={new_username}")
 
     if not new_username or len(new_username) < 2:
@@ -630,14 +682,6 @@ def api_change_username():
         print(f"❌ change-username: ошибка базы данных: {e}")
         db.close()
         return jsonify({'success': False, 'message': str(e)})
-
-# Route для статических файлов (для Vercel)
-@app.route('/<path:filename>')
-def serve_static( filename):
-    """Раздача статических файлов"""
-    if filename.endswith(('.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico', '.css', '.js', '.map')):
-        return send_from_directory(CURRENT_DIR, filename)
-    return redirect('/')
 
 if __name__ == '__main__':
     import sys
