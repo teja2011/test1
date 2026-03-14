@@ -678,6 +678,14 @@ def api_last_messages():
     finally:
         db.close()
 
+@app.route('/api/heartbeat', methods=['POST'])
+def api_heartbeat():
+    """Heartbeat для проверки активности пользователя"""
+    user = get_current_user()
+    if not user:
+        return jsonify({'success': False})
+    return jsonify({'success': True, 'user_id': user.id})
+
 if __name__ == '__main__':
     import sys
     if len(sys.argv) > 1 and sys.argv[1] == '--reset-db':
