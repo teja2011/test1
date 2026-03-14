@@ -190,7 +190,8 @@ def serve_sw():
 @app.route('/Jetesk.png')
 def serve_logo():
     """Раздача логотипа"""
-    return send_from_directory('.', 'Jetesk.png', mimetype='image/png')
+    import os
+    return send_from_directory(os.path.dirname(__file__), 'Jetesk.png', mimetype='image/png')
 
 @app.route('/api/me')
 def api_me():
