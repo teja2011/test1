@@ -1,5 +1,5 @@
-from flask import Flask, render_template_string, request, jsonify, redirect, make_response, send_from_directory
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey, or_, and_, text, case
+from flask import Flask, render_template_string, request, jsonify, redirect, make_response
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey, or_, and_, text
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 from datetime import datetime
 import secrets
@@ -212,11 +212,6 @@ def chat():
     if not user:
         return redirect('/')
     return render_template_string(HTML_TEMPLATE)
-
-@app.route('/Jetesk.png')
-def serve_logo():
-    """Раздача логотипа Jetesk.png"""
-    return send_from_directory('.', 'Jetesk.png', mimetype='image/png')
 
 @app.route('/api/me')
 def api_me():
@@ -582,56 +577,6 @@ def api_notifications_mark_single_read(notification_id):
     except Exception as e:
         db.rollback()
         return jsonify({'success': False, 'message': str(e)})
-    finally:
-        db.close()
-
-@app.route('/api/last-messages')
-def api_last_messages():
-    """Получение последних сообщений для каждого пользователя"""
-    user = get_current_user()
-    if not user:
-        return jsonify([])
-    
-    db = get_db()
-    try:
-        # Получаем последние сообщения из личного чата с каждым пользователем
-        # Для каждого собеседника берём последнее сообщение
-        subquery = db.query(
-            db.func.max(Message.id).label('max_id')
-        ).filter(
-            or_(
-                and_(Message.sender_id == user.id, Message.recipient_id.isnot(None)),
-                and_(Message.recipient_id == user.id, Message.sender_id.isnot(None))
-            )
-        ).group_by(
-            case(
-                (Message.sender_id == user.id, Message.recipient_id),
-                else_=Message.sender_id
-            )
-        ).subquery()
-        
-        personal_msgs = db.query(Message).filter(
-            Message.id.in_(subquery)
-        ).all()
-        
-        result = []
-        for msg in personal_msgs:
-            sender = db.query(User).filter_by(id=msg.sender_id).first()
-            result.append({
-                'id': msg.id,
-                'sender': sender.username if sender else 'Unknown',
-                'sender_id': msg.sender_id,
-                'recipient_id': msg.recipient_id,
-                'content': msg.content,
-                'created_at': msg.created_at.strftime('%H:%M'),
-                'file_type': msg.file_type,
-                'status': msg.status or 'sent'
-            })
-        
-        return jsonify(result)
-    except Exception as e:
-        print(f"Error loading last messages: {e}")
-        return jsonify([])
     finally:
         db.close()
 
