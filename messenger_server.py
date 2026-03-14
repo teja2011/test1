@@ -27,49 +27,13 @@ _db_initialized = False
 def check_and_create_tables():
     """Проверить существование таблиц и создать их если нет"""
     try:
-        with engine.connect() as conn:
-            if DATABASE_URL:
-                # PostgreSQL
-                result = conn.execute(text("""
-                    SELECT EXISTS (
-                        SELECT FROM information_schema.tables 
-                        WHERE table_schema = 'public' 
-                        AND table_name = 'users'
-                    );
-                """))
-            else:
-                # SQLite
-                result = conn.execute(text("""
-                    SELECT name FROM sqlite_master 
-                    WHERE type='table' AND name='users';
-                """))
-            
-            tables_exist = result.fetchone()
-            tables_found = False
-            
-            if tables_exist:
-                if isinstance(tables_exist[0], bool):
-                    tables_found = tables_exist[0]
-                elif isinstance(tables_exist[0], str):
-                    tables_found = len(tables_exist[0]) > 0
-                elif isinstance(tables_exist[0], int):
-                    tables_found = tables_exist[0] > 0
-            
-            if not tables_found:
-                print("Таблицы не найдены. Создаю...")
-                Base.metadata.create_all(engine)
-                print("Таблицы созданы: users, messages, notifications")
-            else:
-                print("Таблицы существуют")
+        # Используем checkfirst=True для безопасного создания
+        print("Проверка и создание таблиц...")
+        Base.metadata.create_all(engine, checkfirst=True)
+        print("Таблицы проверены/созданы: users, messages, notifications")
     except Exception as e:
-        print(f"Ошибка проверки таблиц: {e}")
-        print("Пытаюсь создать таблицы...")
-        try:
-            Base.metadata.create_all(engine)
-            print("Таблицы созданы")
-        except Exception as create_error:
-            print(f"Не удалось создать таблицы: {create_error}")
-            raise
+        print(f"Ошибка при создании таблиц: {e}")
+        raise
 
 class User(Base):
     __tablename__ = 'users'
@@ -78,6 +42,8 @@ class User(Base):
     password_hash = Column(String(256), nullable=True)
     created_at = Column(DateTime, default=datetime.now)
     avatar_color = Column(String(20), default='6366f1')
+    jt_username = Column(String(50), unique=True, nullable=True)  # @username как в Telegram
+    last_seen = Column(DateTime, nullable=True)  # Время последнего посещения
 
 class Message(Base):
     __tablename__ = 'messages'
@@ -739,6 +705,55 @@ def api_username_check():
     except Exception as e:
         print(f"Error checking username: {e}")
         return jsonify({'available': False, 'message': str(e)})
+    finally:
+        db.close()
+
+@app.route('/api/username/set', methods=['POST'])
+def api_username_set():
+    """Установка @username для пользователя"""
+    user = get_current_user()
+    if not user:
+        return jsonify({'success': False, 'message': 'Not authorized'})
+    
+    data = request.json
+    jt_username = data.get('jt_username', '').strip()
+    
+    # Удаляем @ в начале если есть
+    if jt_username.startswith('@'):
+        jt_username = jt_username[1:]
+    
+    if not jt_username:
+        # Пустой - удаляем
+        db = get_db()
+        try:
+            user.jt_username = None
+            db.commit()
+            return jsonify({'success': True, 'jt_username': None})
+        except Exception as e:
+            db.rollback()
+            return jsonify({'success': False, 'message': str(e)})
+        finally:
+            db.close()
+    
+    # Проверка валидности: 5-32 символа, латиница, цифры, _
+    import re
+    if not re.match(r'^[a-zA-Z][a-zA-Z0-9_]{4,31}$', jt_username):
+        return jsonify({'success': False, 'message': 'Неверный формат. 5-32 символа, начинается с буквы (a-z), цифры и _'})
+    
+    db = get_db()
+    try:
+        # Проверяем, не занято ли
+        existing = db.query(User).filter_by(jt_username=jt_username).first()
+        if existing and existing.id != user.id:
+            return jsonify({'success': False, 'message': 'Этот @username уже занят'})
+        
+        user.jt_username = jt_username
+        db.commit()
+        return jsonify({'success': True, 'jt_username': jt_username})
+    except Exception as e:
+        db.rollback()
+        print(f"Error setting username: {e}")
+        return jsonify({'success': False, 'message': str(e)})
     finally:
         db.close()
 
