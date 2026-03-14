@@ -13,6 +13,10 @@
       "dest": "messenger_server.py"
     },
     {
+      "src": "/(sw\\.js|Jetesk\\.png|favicon\\.ico)",
+      "dest": "/$1"
+    },
+    {
       "src": "/(.*)",
       "dest": "messenger_server.py"
     }
