@@ -659,15 +659,15 @@
 
                 <div class="input-group">
                     <label>Имя или @username</label>
-                    <input type="text" id="usernameInput" placeholder="Ваше имя или @username" maxlength="50">
+                    <input type="text" id="usernameInput" placeholder="Ваше имя или @username" maxlength="50" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
                 </div>
                 <div class="input-group">
                     <label>Пароль</label>
-                    <input type="password" id="passwordInput" placeholder="Пароль" maxlength="50">
+                    <input type="password" id="passwordInput" placeholder="Пароль" maxlength="50" autocomplete="off" autocorrect="off" autocapitalize="off">
                 </div>
                 <div class="input-group" id="jtUsernameGroup" style="display: none;">
                     <label>@username (необязательно)</label>
-                    <input type="text" id="jtUsernameInput" placeholder="@username для регистрации" maxlength="32">
+                    <input type="text" id="jtUsernameInput" placeholder="@username для регистрации" maxlength="32" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
                     <p style="font-size: 11px; color: var(--text-secondary); margin-top: 4px;">
                         Уникальное имя 5-32 символа (латиница, цифры, _)
                     </p>
@@ -790,9 +790,8 @@
             <div class="input-group" style="margin-bottom: 16px;">
                 <label style="font-size: 14px; margin-bottom: 8px;">@ Username</label>
                 <div style="display: flex; gap: 8px; align-items: center;">
-                    <input type="text" id="settingsJtUsernameInput" placeholder="@username" maxlength="32"
-                           style="flex: 1; padding: 12px; border: 2px solid var(--border); border-radius: 8px; font-size: 14px; background: var(--bg); color: var(--text);"
-                           pattern="^[a-zA-Z][a-zA-Z0-9_]{4,31}$" title="5-32 символов, начинается с буквы">
+                    <input type="text" id="settingsJtUsernameInput" placeholder="@username" maxlength="32" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+                           style="flex: 1; padding: 12px; border: 2px solid var(--border); border-radius: 8px; font-size: 14px; background: var(--bg); color: var(--text);">
                     <button id="settingsSavejtUsernameBtn" style="padding: 12px 16px; background: var(--primary); color: white; border: none; border-radius: 8px; cursor: pointer;">💾</button>
                 </div>
                 <p id="settingsJtUsernameStatus" style="font-size: 12px; margin-top: 8px;"></p>
@@ -802,7 +801,7 @@
 
             <div class="input-group" style="margin-bottom: 16px;">
                 <label style="font-size: 14px; margin-bottom: 8px;">📝 Сменить ник</label>
-                <input type="text" id="settingsChangeUsernameInput" placeholder="Введите новый ник" maxlength="50" style="width: 100%; padding: 12px; border: 2px solid var(--border); border-radius: 8px; font-size: 14px; background: var(--bg); color: var(--text);">
+                <input type="text" id="settingsChangeUsernameInput" placeholder="Введите новый ник" maxlength="50" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" style="width: 100%; padding: 12px; border: 2px solid var(--border); border-radius: 8px; font-size: 14px; background: var(--bg); color: var(--text);">
             </div>
             <button class="modal-btn" id="settingsChangeUsernameBtn" style="background: var(--primary);">✏️ Сменить ник</button>
             <p style="font-size: 12px; color: var(--text-secondary); text-align: center; margin-top: 8px;">
@@ -1412,9 +1411,8 @@
                 <div class="input-group" style="margin-bottom: 20px;">\
                     <label style="font-size: 14px; margin-bottom: 8px; display: block; font-weight: 600;">@ Username</label>\
                     <div style="display: flex; gap: 8px; align-items: center;">\
-                        <input type="text" id="settingsJtUsernameInput" placeholder="@username" maxlength="32"\
-                               style="flex: 1; padding: 12px; border: 2px solid var(--border); border-radius: 8px; font-size: 14px; background: var(--bg); color: var(--text);"\
-                               pattern="^[a-zA-Z][a-zA-Z0-9_]{4,31}$" title="5-32 символов, начинается с буквы" value="' + (currentUser.jt_username ? '@' + currentUser.jt_username : '') + '">\
+                        <input type="text" id="settingsJtUsernameInput" placeholder="@username" maxlength="32" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"\
+                               style="flex: 1; padding: 12px; border: 2px solid var(--border); border-radius: 8px; font-size: 14px; background: var(--bg); color: var(--text);" value="' + (currentUser.jt_username ? '@' + currentUser.jt_username : '') + '">\
                         <button id="settingsSavejtUsernameBtn" style="padding: 12px 16px; background: var(--primary); color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 18px;">💾</button>\
                     </div>\
                     <p id="settingsJtUsernameStatus" style="font-size: 12px; margin-top: 8px;"></p>\
@@ -1424,7 +1422,7 @@
 \
                 <div class="input-group" style="margin-bottom: 16px;">\
                     <label style="font-size: 14px; margin-bottom: 8px; display: block; font-weight: 600;">📝 Сменить ник</label>\
-                    <input type="text" id="settingsChangeUsernameInput" placeholder="Введите новый ник" maxlength="50" style="width: 100%; padding: 12px; border: 2px solid var(--border); border-radius: 8px; font-size: 14px; background: var(--bg); color: var(--text);">\
+                    <input type="text" id="settingsChangeUsernameInput" placeholder="Введите новый ник" maxlength="50" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" style="width: 100%; padding: 12px; border: 2px solid var(--border); border-radius: 8px; font-size: 14px; background: var(--bg); color: var(--text);">\
                 </div>\
                 <button class="btn" id="settingsChangeUsernameBtn" style="background: var(--primary); margin-bottom: 8px;">✏️ Сменить ник</button>\
                 <p style="font-size: 12px; color: var(--text-secondary); text-align: center;">\
