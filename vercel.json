@@ -1,24 +1,20 @@
 {
   "version": 2,
+  "framework": "python",
   "builds": [
     {
-      "src": "index.py",
+      "src": "messenger_server.py",
       "use": "@vercel/python"
     }
   ],
   "routes": [
     {
       "src": "/api/(.*)",
-      "dest": "index.py"
-    },
-    {
-      "src": "/(.*\\.(png|jpg|jpeg|gif|svg|ico|css|js|map))",
-      "dest": "/$1"
+      "dest": "messenger_server.py"
     },
     {
       "src": "/(.*)",
-      "dest": "index.py"
+      "dest": "messenger_server.py"
     }
-  ],
-  "outputDirectory": "public"
+  ]
 }
