@@ -39,7 +39,7 @@ except Exception as e:
     print(f"[Cloudinary] Not configured: {e}")
 
 SECRET_KEY = os.environ.get('SECRET_KEY', secrets.token_hex(32))
-app = Flask(__name__)
+app = Flask(__name__, static_folder='.')
 app.secret_key = SECRET_KEY
 CORS(app, supports_credentials=True)
 Base = declarative_base()
@@ -207,6 +207,16 @@ def chat():
 def serve_sw():
     """Раздача Service Worker"""
     return send_from_directory('.', 'sw.js', mimetype='application/javascript')
+
+@app.route('/css/<path:filename>')
+def serve_css(filename):
+    """Раздача CSS файлов"""
+    return send_from_directory('css', filename, mimetype='text/css')
+
+@app.route('/js/<path:filename>')
+def serve_js(filename):
+    """Раздача JS файлов"""
+    return send_from_directory('js', filename, mimetype='application/javascript')
 
 @app.route('/api/me')
 def api_me():
