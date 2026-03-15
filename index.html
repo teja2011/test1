@@ -1409,10 +1409,18 @@
                 displayName += ' @' + currentUser.jt_username;
             }
 
+            // Аватарка: изображение или буква
+            var avatarContent = currentUser.username.charAt(0).toUpperCase();
+            var avatarStyle = '';
+            if (currentUser.avatar_url) {
+                avatarStyle = 'background-image: url(' + currentUser.avatar_url + '); background-size: cover; background-position: center;';
+                avatarContent = '';
+            }
+
             content.innerHTML = '\
                 <div style="text-align: center; margin-bottom: 24px;">\
                     <div style="position: relative; display: inline-block;">\
-                        <div class="avatar" id="settingsAvatarPreview" style="width: 80px; height: 80px; font-size: 32px; margin: 0 auto 12px; cursor: pointer;">' + currentUser.username.charAt(0).toUpperCase() + '</div>\
+                        <div class="avatar" id="settingsAvatarPreview" style="width: 80px; height: 80px; font-size: 32px; margin: 0 auto 12px; cursor: pointer; ' + avatarStyle + '">' + avatarContent + '</div>\
                         <div style="position: absolute; bottom: 0; right: 0; background: var(--primary); border-radius: 50%; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; cursor: pointer; border: 2px solid var(--surface);" onclick="document.getElementById(\'avatarInput\').click()">📷</div>\
                     </div>\
                     <input type="file" id="avatarInput" accept="image/*" style="display: none;" onchange="handleAvatarSelect(event)">\
