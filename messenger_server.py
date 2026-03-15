@@ -851,26 +851,29 @@ def api_upload_avatar():
 
     avatar_url = None
     
-    # Принудительная проверка Cloudinary (для Vercel)
-    if not CLOUDINARY_CONFIGURED:
-        print(f"[Avatar] Cloudinary not configured at module level")
+    # Проверка: на Vercel/Cloud только Cloudinary
+    is_serverless = os.environ.get('VERCEL') or os.environ.get('AWS_LAMBDA_FUNCTION_NAME')
+    
+    if is_serverless and not (CLOUDINARY_CONFIGURED or os.environ.get('CLOUDINARY_CLOUD_NAME')):
+        print(f"[Avatar] ERROR: Serverless environment but Cloudinary not configured!")
         print(f"[Avatar] CLOUD_NAME: {os.environ.get('CLOUDINARY_CLOUD_NAME', 'NOT SET')}")
-        print(f"[Avatar] API_KEY: {os.environ.get('CLOUDINARY_API_KEY', 'NOT SET')}")
-        # Пробуем сконфигурировать заново
-        try:
-            import cloudinary
-            cloudinary.config(
-                cloud_name=os.environ.get('CLOUDINARY_CLOUD_NAME'),
-                api_key=os.environ.get('CLOUDINARY_API_KEY'),
-                api_secret=os.environ.get('CLOUDINARY_API_SECRET')
-            )
-            print("[Avatar] Cloudinary configured at runtime")
-        except Exception as e:
-            print(f"[Avatar] Runtime config failed: {e}")
+        return jsonify({'success': False, 'message': 'Cloudinary not configured. Please set CLOUDINARY_* environment variables.'})
 
-    # Если Cloudinary настроен - используем его (для Vercel)
+    # Если Cloudinary настроен - используем его
     if CLOUDINARY_CONFIGURED or os.environ.get('CLOUDINARY_CLOUD_NAME'):
         print(f"[Avatar] Uploading to Cloudinary...")
+        # Принудительная конфигурация для serverless
+        if not CLOUDINARY_CONFIGURED:
+            try:
+                import cloudinary
+                cloudinary.config(
+                    cloud_name=os.environ.get('CLOUDINARY_CLOUD_NAME'),
+                    api_key=os.environ.get('CLOUDINARY_API_KEY'),
+                    api_secret=os.environ.get('CLOUDINARY_API_SECRET')
+                )
+            except Exception as e:
+                print(f"[Avatar] Config error: {e}")
+        
         try:
             import cloudinary.uploader
             upload_result = cloudinary.uploader.upload(

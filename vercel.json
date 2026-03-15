@@ -1,28 +1,24 @@
 {
   "version": 2,
-  "framework": "python",
   "builds": [
     {
-      "src": "messenger_server.py",
-      "use": "@vercel/python"
+      "src": "api/index.py",
+      "use": "@vercel/python",
+      "config": {
+        "runtime": "python3.9",
+        "requirementsPath": "../requirements.txt"
+      }
     }
   ],
   "routes": [
     {
-      "src": "/api/(.*)",
-      "dest": "messenger_server.py"
-    },
-    {
-      "src": "/(sw\\.js|favicon\\.ico)",
-      "dest": "/$1"
-    },
-    {
-      "src": "/avatars/(.*)",
-      "dest": "messenger_server.py"
-    },
-    {
       "src": "/(.*)",
-      "dest": "messenger_server.py"
+      "dest": "api/index.py"
     }
-  ]
+  ],
+  "functions": {
+    "api/index.py": {
+      "maxDuration": 60
+    }
+  }
 }
