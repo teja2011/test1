@@ -1,0 +1,34 @@
+{
+  "version": 2,
+  "functions": {
+    "index.py": {
+      "maxDuration": 60
+    }
+  },
+  "routes": [
+    {
+      "src": "/css/(.*)",
+      "dest": "/css/$1"
+    },
+    {
+      "src": "/js/(.*)",
+      "dest": "/js/$1"
+    },
+    {
+      "src": "/sw.js",
+      "dest": "/sw.js"
+    },
+    {
+      "src": "/api/(.*)",
+      "dest": "/index.py"
+    },
+    {
+      "src": "/product/(.*)",
+      "dest": "/index.py"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/index.py"
+    }
+  ]
+}
