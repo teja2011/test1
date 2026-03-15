@@ -247,7 +247,13 @@ def api_register():
         print(f"Пользователь создан: id={user.id}, username={user.username}")
         print(f"password_hash в БД: {user.password_hash[:50] if user.password_hash else 'NULL'}...")
 
-        resp = make_response(jsonify({'success': True, 'user': {'id': user.id, 'username': user.username, 'avatar_color': user.avatar_color}}))
+        resp = make_response(jsonify({'success': True, 'user': {
+            'id': user.id,
+            'username': user.username,
+            'avatar_color': user.avatar_color or '6366f1',
+            'avatar_url': user.avatar_url,
+            'jt_username': user.jt_username
+        }}))
         resp.set_cookie('user_id', str(user.id), max_age=60*60*24*30, samesite='lax')
         resp.delete_cookie('username')  # Удаляем старый cookie
         return resp
@@ -295,7 +301,13 @@ def api_login():
             return jsonify({'success': False, 'message': 'Неверный пароль'})
         
         print(f"Вход успешен: {username}")
-        resp = make_response(jsonify({'success': True, 'user': {'id': user.id, 'username': user.username, 'avatar_color': user.avatar_color}}))
+        resp = make_response(jsonify({'success': True, 'user': {
+            'id': user.id,
+            'username': user.username,
+            'avatar_color': user.avatar_color or '6366f1',
+            'avatar_url': user.avatar_url,
+            'jt_username': user.jt_username
+        }}))
         resp.set_cookie('user_id', str(user.id), max_age=60*60*24*30, samesite='lax')
         resp.delete_cookie('username')  # Удаляем старый cookie
         return resp
@@ -314,7 +326,13 @@ def api_users():
     db = get_db()
     try:
         users = db.query(User).filter(User.id != user.id).all()
-        return jsonify([{'id': u.id, 'username': u.username, 'avatar_color': u.avatar_color or '6366f1'} for u in users])
+        return jsonify([{
+            'id': u.id,
+            'username': u.username,
+            'avatar_color': u.avatar_color or '6366f1',
+            'avatar_url': u.avatar_url,
+            'jt_username': u.jt_username
+        } for u in users])
     finally:
         db.close()
 
