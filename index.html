@@ -239,7 +239,6 @@
             gap: 12px;
             transition: background 0.2s;
             margin-bottom: 4px;
-            position: relative;
         }
         .user-item:hover { background: var(--bg); }
         .user-item.active { background: rgba(99, 102, 241, 0.3); }
@@ -277,21 +276,6 @@
         }
         .user-last-message .status-icon {
             margin-right: 4px;
-        }
-        .unread-badge {
-            position: absolute;
-            right: 16px;
-            background: #6b7280;
-            color: white;
-            border-radius: 50%;
-            min-width: 24px;
-            height: 24px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 12px;
-            font-weight: 600;
-            padding: 0 6px;
         }
         .chat-panel {
             flex: 1;
@@ -589,11 +573,13 @@
             .avatar { width: 32px; height: 32px; font-size: 14px; flex-shrink: 0; }
             .user-info h2 { font-size: 13px; font-weight: 500; }
             .user-info span { font-size: 11px; }
-            .logout-btn, .header button {
-                padding: 8px 12px;
+            .logout-btn, .header button { 
+                padding: 8px 12px; 
                 font-size: 12px;
                 white-space: nowrap;
             }
+            #notificationsBtn span { display: none; }
+            #notificationsBtn::after { content: '🔔'; font-size: 18px; }
             .chat-input-area { padding: 10px; flex-shrink: 0; }
             .chat-input { 
                 padding: 10px 14px; 
@@ -701,6 +687,12 @@
                         <h2 id="headerUsername">User</h2>
                         <span>🟢 Онлайн</span>
                     </div>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <button class="logout-btn" id="notificationsBtn" style="position: relative;">
+                        🔔 Уведомления
+                        <span id="notifBadge" style="display: none; position: absolute; top: -8px; right: -8px; background: #ef4444; color: white; border-radius: 50%; padding: 2px 6px; font-size: 11px; font-weight: bold;">0</span>
+                    </button>
                 </div>
             </header>
 
@@ -832,6 +824,20 @@
         </div>
     </div>
 
+    <!-- Notifications Modal -->
+    <div id="notificationsModal" class="modal-overlay">
+        <div class="modal" style="max-width: 500px;">
+            <h3 class="modal-title">🔔 Уведомления</h3>
+            <p class="modal-subtitle" id="notificationsCount">Нет новых уведомлений</p>
+            
+            <div id="notificationsList" style="max-height: 400px; overflow-y: auto; margin-bottom: 16px;">
+            </div>
+            
+            <button class="modal-btn" id="markAllReadBtn" style="background: var(--primary);">✅ Отметить все как прочитанные</button>
+            <button class="modal-close" id="notificationsCloseBtn">Закрыть</button>
+        </div>
+    </div>
+
     <script>
         var currentUser = null;
         var users = [];
@@ -844,10 +850,233 @@
         var selectedFile = null;
         var selectedFileData = null;
         var selectedFileType = null;
+        var notifications = [];
+        var unreadCount = 0;
+        var notificationsInterval = null;
         var lastMessagesMap = {};
         var lastMessagesInterval = null;
         var currentSearchQuery = '';
+        var pushSubscription = null;
+        var vapidPublicKey = null;
 
+        // ============================================
+        // WEB PUSH NOTIFICATIONS
+        // ============================================
+
+        // Инициализация push-уведомлений - ОТКЛЮЧЕНО
+        function initPushNotifications() {
+            console.log('[Push] Push notifications disabled');
+            // if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+            //     console.log('[Push] Push notifications not supported');
+            //     return;
+            // }
+            // navigator.serviceWorker.register('/sw.js')
+            //     .then(function(registration) {
+            //         console.log('[Push] Service Worker registered:', registration.scope);
+            //         checkPushStatus();
+            //     })
+            //     .catch(function(err) {
+            //         console.error('[Push] SW registration failed:', err);
+            //     });
+        }
+
+        // Проверка статуса подписки
+        function checkPushStatus() {
+            apiFetch('/api/push/status')
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (data.subscribed) {
+                        console.log('[Push] Already subscribed');
+                        // Проверяем активную подписку
+                        return navigator.serviceWorker.ready;
+                    } else {
+                        console.log('[Push] Not subscribed');
+                        // Можно предложить подписаться
+                        updatePushStatus();
+                        return null;
+                    }
+                })
+                .then(function(registration) {
+                    if (registration) {
+                        return registration.pushManager.getSubscription();
+                    }
+                    return null;
+                })
+                .then(function(subscription) {
+                    pushSubscription = subscription;
+                    updatePushStatus();
+                    if (!subscription) {
+                        // Подписки нет, но сервер говорит что подписан - нужно переподписаться
+                        checkPushSupportAndSubscribe();
+                    }
+                })
+                .catch(function(err) {
+                    console.error('[Push] Error checking status:', err);
+                });
+        }
+
+        // Проверка поддержки и запрос разрешения
+        function checkPushSupportAndSubscribe() {
+            if (!('Notification' in window)) {
+                console.log('[Push] Notifications not supported');
+                return;
+            }
+
+            if (Notification.permission === 'granted') {
+                subscribeToPush();
+            } else if (Notification.permission !== 'denied') {
+                Notification.requestPermission().then(function(permission) {
+                    if (permission === 'granted') {
+                        subscribeToPush();
+                    } else {
+                        console.log('[Push] Permission denied');
+                    }
+                });
+            } else {
+                console.log('[Push] Permission previously denied');
+            }
+        }
+
+        // Подписка на push-уведомления
+        function subscribeToPush() {
+            // Получаем публичный ключ
+            apiFetch('/api/push/public-key')
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    vapidPublicKey = data.public_key;
+                    console.log('[Push] VAPID public key received');
+                    
+                    return navigator.serviceWorker.ready;
+                })
+                .then(function(registration) {
+                    console.log('[Push] Subscribing to push...');
+                    
+                    // Подписываемся
+                    return registration.pushManager.subscribe({
+                        userVisibleOnly: true,
+                        applicationServerKey: urlBase64ToUint8Array(vapidPublicKey)
+                    });
+                })
+                .then(function(subscription) {
+                    console.log('[Push] Subscribed:', subscription);
+                    pushSubscription = subscription;
+                    
+                    // Отправляем подписку на сервер
+                    return apiFetch('/api/push/subscribe', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            endpoint: subscription.endpoint,
+                            p256dh: arrayBufferToBase64(subscription.getKey('p256dh')),
+                            auth: arrayBufferToBase64(subscription.getKey('auth'))
+                        })
+                    });
+                })
+                .then(function(r) { return r.json(); })
+                .then(function(result) {
+                    if (result.success) {
+                        console.log('[Push] Successfully subscribed on server');
+                    } else {
+                        console.error('[Push] Server subscription failed:', result.message);
+                    }
+                })
+                .catch(function(err) {
+                    console.error('[Push] Subscribe error:', err);
+                });
+        }
+
+        // Отписка от push-уведомлений
+        function unsubscribeFromPush() {
+            if (!pushSubscription) {
+                return Promise.resolve();
+            }
+
+            return pushSubscription.unsubscribe()
+                .then(function(success) {
+                    if (success) {
+                        console.log('[Push] Unsubscribed from browser');
+                        pushSubscription = null;
+                        
+                        // Отменяем подписку на сервере
+                        return apiFetch('/api/push/unsubscribe', {
+                            method: 'POST'
+                        });
+                    }
+                    return null;
+                })
+                .then(function() {
+                    console.log('[Push] Unsubscribed from server');
+                })
+                .catch(function(err) {
+                    console.error('[Push] Unsubscribe error:', err);
+                });
+        }
+
+        // Конвертация base64 в Uint8Array для VAPID ключа
+        function urlBase64ToUint8Array(base64String) {
+            var padding = '='.repeat((4 - base64String.length % 4) % 4);
+            var base64 = (base64String + padding)
+                .replace(/\-/g, '+')
+                .replace(/_/g, '/');
+
+            var rawData = window.atob(base64);
+            var outputArray = new Uint8Array(rawData.length);
+
+            for (var i = 0; i < rawData.length; ++i) {
+                outputArray[i] = rawData.charCodeAt(i);
+            }
+            return outputArray;
+        }
+
+        // Конвертация ArrayBuffer в base64
+        function arrayBufferToBase64(buffer) {
+            var binary = '';
+            var bytes = new Uint8Array(buffer);
+            var len = bytes.byteLength;
+            for (var i = 0; i < len; i++) {
+                binary += String.fromCharCode(bytes[i]);
+            }
+            return window.btoa(binary);
+        }
+
+        // Обновление статуса push-кнопки
+        function updatePushStatus() {
+            var btn = document.getElementById('pushToggleBtn');
+            var status = document.getElementById('pushStatus');
+            
+            if (!btn || !status) return;
+            
+            if (pushSubscription) {
+                btn.textContent = '🔕 Выключить уведомления';
+                btn.style.background = '#64748b';
+                status.textContent = 'Уведомления включены. Нажмите чтобы выключить.';
+            } else {
+                btn.textContent = '🔔 Включить уведомления';
+                btn.style.background = 'var(--primary)';
+                status.textContent = 'Получайте уведомления о новых сообщениях';
+            }
+        }
+
+        // Переключение push-уведомлений
+        function togglePushNotifications() {
+            if (pushSubscription) {
+                // Отключаем
+                unsubscribeFromPush().then(function() {
+                    pushSubscription = null;
+                    updatePushStatus();
+                });
+            } else {
+                // Включаем
+                checkPushSupportAndSubscribe();
+                updatePushStatus();
+            }
+        }
+
+        // ============================================
+        // КОНЕЦ WEB PUSH NOTIFICATIONS
+        // ============================================
+
+        // Вспомогательная функция для fetch с credentials
         function apiFetch(url, options) {
             options = options || {};
             options.credentials = 'include';
@@ -1058,8 +1287,6 @@
                     '<div class="user-name">' + displayName + '</div>' +
                     statusHtml +
                     lastMessageHtml +
-                    '</div>' +
-                    (user.unread_count > 0 ? '<div class="unread-badge">' + (user.unread_count > 99 ? '99+' : user.unread_count) + '</div>' : '') +
                     '</div></div>';
             });
 
@@ -1313,9 +1540,8 @@
                             timeEl.textContent = timeEl.textContent.replace(' ✓', ' ✓✓').replace(/([0-9]{2}:[0-9]{2})$/, '$1 ✓✓');
                         }
                     });
-                    // Обновляем последние сообщения и список пользователей (для сброса unread_count)
+                    // Обновляем последние сообщения
                     loadLastMessages();
-                    loadUsers();
                 }
             })
             .catch(function(err) {
@@ -1637,7 +1863,7 @@
                     status: 'sending'
                 });
 
-                console.log('Отправка файла ��а сервер...', {
+                console.log('Отправка файла на сервер...', {
                     fileType: fileType,
                     dataSize: dataSize,
                     fileName: selectedFile ? selectedFile.name : 'unknown'
@@ -1902,6 +2128,9 @@
             // Инициализируем вкладки и показываем навигацию
             initTabs();
             showFooter();
+            
+            // Инициализируем push-уведомления
+            initPushNotifications();
         }
 
         // Обработка изменения размера (когда появляется клавиатура)
