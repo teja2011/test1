@@ -390,6 +390,7 @@
         }
         .chat-input-area {
             padding: 16px 20px;
+            padding-bottom: max(16px, env(safe-area-inset-bottom));
             background: var(--surface);
             border-top: 1px solid var(--border);
             display: flex;
@@ -675,23 +676,38 @@
         }
         /* Safe area for iPhone */
         @supports (padding: max(0px)) {
-            .header { 
-                padding-left: max(12px, env(safe-area-inset-left)); 
-                padding-right: max(12px, env(safe-area-inset-right)); 
+            .header {
+                padding-left: max(12px, env(safe-area-inset-left));
+                padding-right: max(12px, env(safe-area-inset-right));
                 padding-top: max(10px, env(safe-area-inset-top));
             }
-            .chat-input-area { 
-                padding-left: max(10px, env(safe-area-inset-left)); 
+            .chat-input-area {
+                padding-left: max(10px, env(safe-area-inset-left));
                 padding-right: max(10px, env(safe-area-inset-right));
-                padding-bottom: max(10px, env(safe-area-inset-bottom));
+                padding-bottom: max(16px, env(safe-area-inset-bottom));
+                background: var(--surface);
             }
-            .messages { 
-                padding-left: max(10px, env(safe-area-inset-left)); 
+            .messages {
+                padding-left: max(10px, env(safe-area-inset-left));
                 padding-right: max(10px, env(safe-area-inset-right));
             }
             #scrollToBottomBtn {
                 right: max(12px, env(safe-area-inset-right));
                 bottom: max(70px, env(safe-area-inset-bottom));
+            }
+        }
+        
+        /* Предотвращение просвета на iPhone */
+        @media only screen and (device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3) {
+            .chat-input-area {
+                padding-bottom: max(20px, env(safe-area-inset-bottom));
+            }
+        }
+        
+        /* Фикс для iOS Safari при появлении клавиатуры */
+        @supports (-webkit-touch-callout: none) {
+            .chat-input-area {
+                padding-bottom: max(16px, calc(16px + env(safe-area-inset-bottom)));
             }
         }
     </style>
@@ -1226,10 +1242,18 @@
                 displayName += ' @' + currentUser.jt_username;
             }
 
+            // Аватарка: изображение или буква
+            var avatarStyle = 'background: #' + (currentUser.avatar_color || '6366f1') + ';';
+            var avatarContent = currentUser.username.charAt(0).toUpperCase();
+            if (currentUser.avatar_url) {
+                avatarStyle = 'background-image: url(' + currentUser.avatar_url + '); background-size: cover; background-position: center;';
+                avatarContent = '';
+            }
+
             content.innerHTML = '\
                 <div style="text-align: center; margin-bottom: 24px;">\
                     <div style="position: relative; display: inline-block;">\
-                        <div class="avatar" id="settingsAvatarPreview" style="width: 80px; height: 80px; font-size: 32px; margin: 0 auto 12px; cursor: pointer;">' + currentUser.username.charAt(0).toUpperCase() + '</div>\
+                        <div class="avatar" id="settingsAvatarPreview" style="width: 80px; height: 80px; font-size: 32px; margin: 0 auto 12px; cursor: pointer; ' + avatarStyle + '">' + avatarContent + '</div>\
                         <div style="position: absolute; bottom: 0; right: 0; background: var(--primary); border-radius: 50%; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; cursor: pointer; border: 2px solid var(--surface);" onclick="document.getElementById(\'avatarInput\').click()">📷</div>\
                     </div>\
                     <input type="file" id="avatarInput" accept="image/*" style="display: none;" onchange="handleAvatarSelect(event)">\
