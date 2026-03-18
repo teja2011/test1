@@ -199,6 +199,17 @@
         .users-footer.hidden {
             display: none;
         }
+        .users-footer.chat-hidden {
+            display: none !important;
+        }
+        /* На ПК footer только под панелью контактов */
+        @media (min-width: 901px) {
+            .users-footer {
+                left: 0;
+                right: auto;
+                width: 320px;
+            }
+        }
         .nav-item {
             display: flex;
             flex-direction: column;
@@ -405,10 +416,16 @@
             padding: 16px 20px;
             background: var(--surface);
             border-top: 1px solid var(--border);
-            display: flex;
+            display: none;
             gap: 12px;
             align-items: center;
             flex-shrink: 0;
+        }
+        /* На ПК показываем поле ввода только в чате */
+        @media (min-width: 901px) {
+            .chat-input-area.visible {
+                display: flex !important;
+            }
         }
         .chat-input-area.hidden {
             display: none !important;
@@ -615,8 +632,8 @@
             .chat-input-area {
                 display: none !important;
             }
-            /* Показываем поле ввода только в чате */
-            .chat-input-area.visible {
+            /* Показываем поле ввода только когда не скрыто */
+            .chat-input-area:not(.hidden) {
                 display: flex !important;
                 padding-bottom: max(16px, env(safe-area-inset-bottom));
             }
@@ -796,7 +813,7 @@
                 </aside>
                 
                 <!-- Footer вынесен из users-panel чтобы быть всегда видимым -->
-                <div class="users-footer" id="usersFooter">
+                <div class="users-footer chat-hidden" id="usersFooter">
                     <div class="nav-item active" id="chatsTabBtn" onclick="showChatsTab()">
                         <span class="nav-icon">💬</span>
                         <span class="nav-label">Чаты</span>
@@ -830,7 +847,7 @@
                         </div>
                     </div>
 
-                    <div class="chat-input-area" style="flex-direction: column; align-items: stretch;">
+                    <div class="chat-input-area hidden" style="flex-direction: column; align-items: stretch;">
                         <div id="filePreviewContainer" style="display: none;"></div>
                         <div style="display: flex; gap: 12px; align-items: center;">
                             <input type="file" id="fileInput" accept="image/*,*/*" style="display:none;" onchange="handleFileSelect(event)">
@@ -1198,9 +1215,12 @@
             if (usersPanel) usersPanel.style.display = 'none';
             usersPanel.classList.add('hidden');
             if (backBtn) backBtn.style.display = 'flex';
-            
+
             // Показываем поле ввода, скрываем footer
-            if (chatInputArea) chatInputArea.classList.remove('hidden');
+            if (chatInputArea) {
+                chatInputArea.classList.remove('hidden');
+                chatInputArea.classList.add('visible');
+            }
             if (usersFooter) {
                 usersFooter.classList.add('chat-hidden');
             }
@@ -1216,9 +1236,12 @@
             if (usersPanel) usersPanel.style.display = 'flex';
             usersPanel.classList.remove('hidden');
             if (backBtn) backBtn.style.display = 'none';
-            
+
             // Скрываем поле ввода, показываем footer
-            if (chatInputArea) chatInputArea.classList.add('hidden');
+            if (chatInputArea) {
+                chatInputArea.classList.add('hidden');
+                chatInputArea.classList.remove('visible');
+            }
             if (usersFooter) {
                 usersFooter.classList.remove('chat-hidden');
             }
@@ -1256,7 +1279,10 @@
                 backBtn.style.display = 'none';
             }
             // Скрываем поле ввода, показываем footer
-            if (chatInputArea) chatInputArea.classList.add('hidden');
+            if (chatInputArea) {
+                chatInputArea.classList.add('hidden');
+                chatInputArea.classList.remove('visible');
+            }
             if (usersFooter) {
                 usersFooter.classList.remove('chat-hidden');
             }
@@ -1281,7 +1307,10 @@
                 chatsTabBtn.classList.remove('active');
             }
             // Скрываем поле ввода и footer в настройках
-            if (chatInputArea) chatInputArea.classList.add('hidden');
+            if (chatInputArea) {
+                chatInputArea.classList.add('hidden');
+                chatInputArea.classList.remove('visible');
+            }
             if (usersFooter) {
                 usersFooter.classList.add('chat-hidden');
             }
@@ -2006,6 +2035,9 @@
             loadMessages();
             loadNotifications();
             updateOnlineStatus();
+
+            // Показываем footer и скрываем поле ввода при загрузке
+            showChatsTab();
 
             // Прокручиваем вниз только при первом запуске
             setTimeout(function() { scrollToBottom(); }, 100);
