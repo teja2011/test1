@@ -202,13 +202,16 @@
         .users-footer.chat-hidden {
             display: none !important;
         }
-        /* На ПК footer только под панелью контактов */
+        /* На ПК footer только под панелью контактов и всегда виден */
         @media (min-width: 901px) {
             .users-footer {
                 left: 0;
                 right: auto;
                 width: 320px;
                 border-right: 1px solid var(--border);
+            }
+            .users-footer.chat-hidden {
+                display: flex !important;
             }
         }
         .nav-item {
@@ -818,7 +821,7 @@
                     <div class="users-list" id="usersList">
                     </div>
                 </aside>
-                
+
                 <div class="users-footer chat-hidden" id="usersFooter">
                     <div class="nav-item active" id="chatsTabBtn" onclick="showChatsTab()">
                         <span class="nav-icon">💬</span>
@@ -1236,12 +1239,13 @@
             usersPanel.classList.add('hidden');
             if (backBtn) backBtn.style.display = 'flex';
 
-            // Показываем поле ввода, скрываем footer
+            // Показываем поле ввода
             if (chatInputArea) {
                 chatInputArea.classList.remove('hidden');
                 chatInputArea.classList.add('visible');
             }
-            if (usersFooter) {
+            // На мобильных скрываем footer
+            if (usersFooter && window.innerWidth <= 900) {
                 usersFooter.classList.add('chat-hidden');
             }
         }
@@ -1257,12 +1261,13 @@
             usersPanel.classList.remove('hidden');
             if (backBtn) backBtn.style.display = 'none';
 
-            // Скрываем поле ввода, показываем footer
+            // Скрываем поле ввода
             if (chatInputArea) {
                 chatInputArea.classList.add('hidden');
                 chatInputArea.classList.remove('visible');
             }
-            if (usersFooter) {
+            // На мобильных показываем footer
+            if (usersFooter && window.innerWidth <= 900) {
                 usersFooter.classList.remove('chat-hidden');
             }
             showFooter();
@@ -1298,12 +1303,13 @@
             if (backBtn) {
                 backBtn.style.display = 'none';
             }
-            // Скрываем поле ввода, показываем footer
+            // Скрываем поле ввода
             if (chatInputArea) {
                 chatInputArea.classList.add('hidden');
                 chatInputArea.classList.remove('visible');
             }
-            if (usersFooter) {
+            // На мобильных показываем footer
+            if (usersFooter && window.innerWidth <= 900) {
                 usersFooter.classList.remove('chat-hidden');
             }
             showFooter();
@@ -1326,12 +1332,13 @@
             if (chatsTabBtn) {
                 chatsTabBtn.classList.remove('active');
             }
-            // Скрываем поле ввода и footer в настройках
+            // Скрываем поле ввода
             if (chatInputArea) {
                 chatInputArea.classList.add('hidden');
                 chatInputArea.classList.remove('visible');
             }
-            if (usersFooter) {
+            // На мобильных скрываем footer в настройках
+            if (usersFooter && window.innerWidth <= 900) {
                 usersFooter.classList.add('chat-hidden');
             }
             hideFooter();
@@ -1641,7 +1648,7 @@
                     // Рисуем ����зображение на canvas
                     ctx.drawImage(img, 0, 0);
 
-                    // Конвертируем в JPEG (качество 0.8 для баланса качества и размера)
+                    // Конвертир��ем в JPEG (качество 0.8 для баланса качества и размера)
                     selectedFileData = canvas.toDataURL('image/jpeg', 0.8);
                     console.log('[handleFileSelect] Converted to JPEG, data length:', selectedFileData.length);
 
@@ -2055,9 +2062,6 @@
             loadMessages();
             loadNotifications();
             updateOnlineStatus();
-
-            // Показываем footer и скрываем поле ввода при загрузке
-            showChatsTab();
 
             // Прокручиваем вниз только при первом запуске
             setTimeout(function() { scrollToBottom(); }, 100);
