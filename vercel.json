@@ -1,0 +1,39 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "index.py",
+      "use": "@vercel/python"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/Jetesk.png",
+      "dest": "/index.py"
+    },
+    {
+      "src": "/sw.js",
+      "dest": "/index.py"
+    },
+    {
+      "src": "/manifest.json",
+      "dest": "/index.py"
+    },
+    {
+      "src": "/css/(.*)",
+      "dest": "/css/$1"
+    },
+    {
+      "src": "/js/(.*)",
+      "dest": "/js/$1"
+    },
+    {
+      "src": "/api/(.*)",
+      "dest": "/index.py"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/index.py"
+    }
+  ]
+}
