@@ -4,6 +4,10 @@
     {
       "src": "index.py",
       "use": "@vercel/python"
+    },
+    {
+      "src": "api/migrate.py",
+      "use": "@vercel/python"
     }
   ],
   "routes": [
@@ -20,12 +24,28 @@
       "dest": "/index.py"
     },
     {
+      "src": "/virtual-scroll.js",
+      "dest": "/index.py"
+    },
+    {
+      "src": "/app.js",
+      "dest": "/index.py"
+    },
+    {
+      "src": "/test-registration.html",
+      "dest": "/index.py"
+    },
+    {
       "src": "/css/(.*)",
       "dest": "/css/$1"
     },
     {
       "src": "/js/(.*)",
       "dest": "/js/$1"
+    },
+    {
+      "src": "/api/migrate",
+      "dest": "/api/migrate.py"
     },
     {
       "src": "/api/(.*)",
