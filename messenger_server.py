@@ -14,23 +14,20 @@ from flask_cors import CORS
 import smtplib
 from dotenv import load_dotenv
 
-# Загружаем переменные окружения из .env файла
 load_dotenv()
 
 def to_msk(dt):
     """Конвертирует datetime в MSK (UTC+3)"""
     if dt is None:
         return None
-    # datetime.utcnow() возвращает UTC, поэтому добавляем +3 для Москвы
     return dt + timedelta(hours=3)
 
 def utc_now():
     """Возвращает текущее время в UTC"""
     return datetime.utcnow()
 
-# Keep-Alive механизм чтобы сервер не засыпал
-KEEPALIVE_INTERVAL = int(os.environ.get('KEEPALIVE_INTERVAL', 300))  # 5 минут
-KEEPALIVE_URL = os.environ.get('KEEPALIVE_URL', '')  # URL для ping (например, https://your-app.vercel.app/api/keepalive)
+KEEPALIVE_INTERVAL = int(os.environ.get('KEEPALIVE_INTERVAL', 300)) 
+KEEPALIVE_URL = os.environ.get('KEEPALIVE_URL', '') 
 
 def keepalive_worker():
     """Фоновый поток для отправки keep-alive запросов"""
@@ -44,13 +41,11 @@ def keepalive_worker():
             print(f"[Keep-Alive] Error: {e}")
         time.sleep(KEEPALIVE_INTERVAL)
 
-# Запускаем keep-alive поток если указан URL
 if KEEPALIVE_URL:
     keepalive_thread = threading.Thread(target=keepalive_worker, daemon=True)
     keepalive_thread.start()
     print(f"[Keep-Alive] Started with interval {KEEPALIVE_INTERVAL}s")
 
-# Настройка БД - Neon PostgreSQL или SQLite
 DATABASE_URL = os.environ.get('DATABASE_URL')
 if DATABASE_URL:
     engine = create_engine(DATABASE_URL, echo=False, pool_pre_ping=True)
@@ -99,9 +94,9 @@ class User(Base):
     password_hash = Column(String(256), nullable=True)
     created_at = Column(DateTime, default=utc_now)
     avatar_color = Column(String(20), default='6366f1')
-    avatar_url = Column(String(500), nullable=True)  # URL аватарки (хранит путь к файлу)
-    jt_username = Column(String(50), unique=True, nullable=True)  # @username как в Telegram
-    last_seen = Column(DateTime, nullable=True)  # Время последнего посещения
+    avatar_url = Column(String(500), nullable=True)  
+    jt_username = Column(String(50), unique=True, nullable=True) 
+    last_seen = Column(DateTime, nullable=True)  
 
 class Message(Base):
     __tablename__ = 'messages'
@@ -140,9 +135,6 @@ def reset_db():
 def get_db():
     return sessionmaker(bind=engine)()
 
-# ============================================
-# СОЗДАЁМ ТАБЛИЦЫ ПРИ ЗАГРУЗКЕ МОДУЛЯ
-# ============================================
 def init_tables():
     """Принудительно создать все таблицы"""
     try:
