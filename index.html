@@ -879,20 +879,15 @@
         </div>
 
         <div class="form-group">
-            <input type="email" id="registerEmailInput" placeholder="Email (обязательно)" maxlength="100" autocomplete="email">
+            <input type="text" id="jtUsernameInput" placeholder="@jt_username (опционально)" maxlength="32" autocomplete="off" spellcheck="false">
         </div>
 
         <div class="form-group">
             <input type="password" id="registerPasswordInput" placeholder="Пароль (мин. 6 символов)" maxlength="50" autocomplete="off">
         </div>
 
-        <div class="form-group" id="verificationCodeGroup" style="display: none;">
-            <input type="text" id="verificationCodeInput" placeholder="Код из email (6 цифр)" maxlength="6" autocomplete="off" style="text-align: center; font-size: 18px; letter-spacing: 4px;">
-        </div>
-
         <div id="registerError" class="error-msg"></div>
 
-        <button class="btn" id="sendCodeBtn" style="display: none;">📧 Отправить код</button>
         <button class="btn" id="registerBtn">📝 Зарегистрироваться</button>
 
         <p class="login-switch">
@@ -1113,16 +1108,10 @@
             document.getElementById('registerScreen').style.display = 'flex';
             document.getElementById('registerError').textContent = '';
             document.getElementById('registerError').style.color = '#ef4444';
-            // Сбрасываем форму регистрации
             document.getElementById('registerNameInput').value = '';
             document.getElementById('registerUsernameInput').value = '';
-            document.getElementById('registerEmailInput').value = '';
+            document.getElementById('jtUsernameInput').value = '';
             document.getElementById('registerPasswordInput').value = '';
-            document.getElementById('verificationCodeInput').value = '';
-            document.getElementById('verificationCodeGroup').style.display = 'none';
-            document.getElementById('verificationCodeInput').disabled = false;
-            document.getElementById('sendCodeBtn').style.display = 'none';
-            emailVerified = false;
         }
 
         function login() {
@@ -1158,86 +1147,11 @@
             });
         }
 
-        var emailVerified = false;
-
-        function sendVerificationCode() {
-            var email = document.getElementById('registerEmailInput').value.trim().toLowerCase();
-            var errorEl = document.getElementById('registerError');
-
-            if (!email || !email.includes('@') || !email.includes('.')) {
-                errorEl.textContent = 'Введите корректный email';
-                return;
-            }
-
-            var btn = document.getElementById('sendCodeBtn');
-            btn.disabled = true;
-            btn.textContent = '⏳ Отправка...';
-
-            apiFetch('/api/send-verification-code', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({email: email})
-            })
-            .then(function(r) { return r.json(); })
-            .then(function(result) {
-                if (result.success) {
-                    errorEl.textContent = '';
-                    document.getElementById('verificationCodeGroup').style.display = 'block';
-                    btn.style.display = 'none';
-                    document.getElementById('verificationCodeInput').focus();
-                } else {
-                    errorEl.textContent = result.message;
-                    btn.disabled = false;
-                    btn.textContent = '📧 Отправить код';
-                }
-            })
-            .catch(function(err) {
-                errorEl.textContent = 'Ошибка: ' + err.message;
-                btn.disabled = false;
-                btn.textContent = '📧 Отправить код';
-            });
-        }
-
-        function verifyEmail() {
-            var email = document.getElementById('registerEmailInput').value.trim().toLowerCase();
-            var code = document.getElementById('verificationCodeInput').value.trim();
-            var errorEl = document.getElementById('registerError');
-
-            if (!code || code.length !== 6) {
-                errorEl.textContent = 'Введите 6-значный код';
-                return;
-            }
-
-            apiFetch('/api/verify-email', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({email: email, code: code})
-            })
-            .then(function(r) { return r.json(); })
-            .then(function(result) {
-                if (result.success) {
-                    emailVerified = true;
-                    errorEl.style.color = '#22c55e';
-                    errorEl.textContent = '✅ Email подтверждён! Теперь нажмите "Зарегистрироваться"';
-                    document.getElementById('verificationCodeInput').disabled = true;
-                    document.getElementById('registerBtn').focus();
-                } else {
-                    errorEl.style.color = '#ef4444';
-                    errorEl.textContent = result.message || 'Код не верный';
-                }
-            })
-            .catch(function(err) {
-                errorEl.style.color = '#ef4444';
-                errorEl.textContent = 'Ошибка: ' + err.message;
-            });
-        }
-
         function register() {
             var name = document.getElementById('registerNameInput').value.trim();
             var username = document.getElementById('registerUsernameInput').value.trim();
-            var email = document.getElementById('registerEmailInput').value.trim().toLowerCase();
+            var jtUsername = document.getElementById('jtUsernameInput').value.trim();
             var password = document.getElementById('registerPasswordInput').value;
-            var verificationCode = document.getElementById('verificationCodeInput').value.trim();
             var errorEl = document.getElementById('registerError');
 
             if (!name) {
@@ -1252,16 +1166,8 @@
                 errorEl.textContent = 'Введите @username';
                 return;
             }
-            if (!email || !email.includes('@') || !email.includes('.')) {
-                errorEl.textContent = 'Введите корректный email';
-                return;
-            }
             if (!password || password.length < 6) {
                 errorEl.textContent = 'Пароль должен быть не менее 6 символов';
-                return;
-            }
-            if (!emailVerified) {
-                errorEl.textContent = 'Подтвердите email кодом из письма';
                 return;
             }
 
@@ -1271,9 +1177,7 @@
                 body: JSON.stringify({
                     username: username,
                     password: password,
-                    email: email,
-                    verification_code: verificationCode,
-                    jt_username: username
+                    jt_username: jtUsername || username
                 })
             })
             .then(function(r) { return r.json(); })
@@ -2541,7 +2445,6 @@
             document.getElementById('settingsModal').classList.remove('show');
         }
 
-        // Функции для настроек во вкладке
         function settingsSavejtUsername() {
             var input = document.getElementById('settingsJtUsernameInput');
             var username = input.value.trim().replace('@', '');
@@ -2970,9 +2873,6 @@
         document.addEventListener('DOMContentLoaded', function() {
             var loginBtn = document.getElementById('loginBtn');
             var registerBtn = document.getElementById('registerBtn');
-            var sendCodeBtn = document.getElementById('sendCodeBtn');
-            var emailInput = document.getElementById('registerEmailInput');
-            var verificationCodeInput = document.getElementById('verificationCodeInput');
 
             if (loginBtn) {
                 loginBtn.addEventListener('click', login);
@@ -2980,46 +2880,6 @@
 
             if (registerBtn) {
                 registerBtn.addEventListener('click', register);
-            }
-
-            if (sendCodeBtn) {
-                sendCodeBtn.addEventListener('click', sendVerificationCode);
-            }
-
-            // Показываем кнопку отправки кода после ввода email
-            if (emailInput) {
-                emailInput.addEventListener('blur', function() {
-                    var email = this.value.trim().toLowerCase();
-                    if (email && email.includes('@') && email.includes('.')) {
-                        sendCodeBtn.style.display = 'block';
-                    } else {
-                        sendCodeBtn.style.display = 'none';
-                    }
-                });
-                
-                // Показываем кнопку также при вводе email
-                emailInput.addEventListener('input', function() {
-                    var email = this.value.trim().toLowerCase();
-                    if (email && email.includes('@') && email.includes('.')) {
-                        sendCodeBtn.style.display = 'block';
-                    } else {
-                        sendCodeBtn.style.display = 'none';
-                    }
-                });
-            }
-
-            // Отправка кода по Enter в поле email
-            if (emailInput) {
-                emailInput.addEventListener('keypress', function(e) {
-                    if (e.key === 'Enter') sendVerificationCode();
-                });
-            }
-
-            // Проверка кода по Enter в поле кода
-            if (verificationCodeInput) {
-                verificationCodeInput.addEventListener('keypress', function(e) {
-                    if (e.key === 'Enter') verifyEmail();
-                });
             }
 
             // Enter для входа

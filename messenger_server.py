@@ -13,7 +13,6 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from flask_cors import CORS
 from flask_compress import Compress
 from flask_socketio import SocketIO, emit
-import smtplib
 from dotenv import load_dotenv
 import base64
 import json
@@ -117,12 +116,11 @@ class User(Base):
     id = Column(Integer, primary_key=True)
     username = Column(String(50), unique=True, nullable=False)
     password_hash = Column(String(256), nullable=True)
-    email = Column(String(100), unique=True, nullable=True)  # Email пользователя
     created_at = Column(DateTime, default=utc_now)
     avatar_color = Column(String(20), default='6366f1')
-    avatar_url = Column(String(500), nullable=True)  # URL аватарки (хранит путь к файлу)
-    jt_username = Column(String(50), unique=True, nullable=True)  # @username как в Telegram
-    last_seen = Column(DateTime, nullable=True)  # Время последнего посещения
+    avatar_url = Column(String(500), nullable=True)
+    jt_username = Column(String(50), unique=True, nullable=True)
+    last_seen = Column(DateTime, nullable=True)
 
 class Message(Base):
     __tablename__ = 'messages'
@@ -143,16 +141,6 @@ class Notification(Base):
     type = Column(String(20), default='message')
     is_read = Column(Integer, default=0)
     created_at = Column(DateTime, default=utc_now)
-
-class EmailVerification(Base):
-    __tablename__ = 'email_verifications'
-    id = Column(Integer, primary_key=True)
-    email = Column(String(100), nullable=False, unique=True)
-    code = Column(String(6), nullable=False)
-    created_at = Column(DateTime, default=utc_now)
-    expires_at = Column(DateTime, nullable=True)
-    is_verified = Column(Integer, default=0)
-
 def init_db():
     check_and_create_tables()
     print("Database initialized with tables: users, messages, notifications")
@@ -297,55 +285,35 @@ def api_register():
     data = request.json
     username = data.get('username', '').strip()
     password = data.get('password', '')
-    email = data.get('email', '').strip().lower()
-    verification_code = data.get('verification_code', '').strip()
+    jt_username = data.get('jt_username', '').strip()
 
     print(f"=== РЕГИСТРАЦИЯ ===")
     print(f"Username: {username}")
-    print(f"Email: {email}")
     print(f"Password получен: {'да' if password else 'нет'}")
 
     if not username or len(username) < 2:
         return jsonify({'success': False, 'message': 'Имя слишком короткое'})
     if not password or len(password) < 6:
         return jsonify({'success': False, 'message': 'Пароль должен быть не менее 6 символов'})
-    if not email or '@' not in email or '.' not in email:
-        return jsonify({'success': False, 'message': 'Некорректный email'})
 
     db = get_db()
     try:
-        # Проверяем, существует ли пользователь с таким username
         existing = db.query(User).filter_by(username=username).first()
         if existing:
             return jsonify({'success': False, 'message': 'Пользователь уже существует'})
-        
-        # Проверяем, существует ли пользователь с таким email
-        existing_email = db.query(User).filter_by(email=email).first()
-        if existing_email:
-            return jsonify({'success': False, 'message': 'Email уже зарегистрирован'})
-        
-        # Проверяем код подтверждения
-        verification = db.query(EmailVerification).filter_by(email=email, code=verification_code, is_verified=1).first()
-        if not verification:
-            return jsonify({'success': False, 'message': 'Неверный код подтверждения или код не был подтверждён'})
-        
-        # Проверяем, не истёк ли код
-        if verification.expires_at and datetime.utcnow() > verification.expires_at:
-            return jsonify({'success': False, 'message': 'Код подтверждения истёк'})
 
         password_hash = generate_password_hash(password)
         print(f"password_hash сгенерирован: {password_hash[:50]}...")
 
-        user = User(username=username, password_hash=password_hash, email=email, avatar_color=generate_avatar_color())
+        user = User(username=username, password_hash=password_hash, avatar_color=generate_avatar_color(), jt_username=jt_username if jt_username else None)
         db.add(user)
         db.commit()
 
-        print(f"Пользователь создан: id={user.id}, username={user.username}, email={user.email}")
+        print(f"Пользователь создан: id={user.id}, username={user.username}")
 
         resp = make_response(jsonify({'success': True, 'user': {
             'id': user.id,
             'username': user.username,
-            'email': user.email,
             'avatar_color': user.avatar_color or '6366f1',
             'avatar_url': user.avatar_url,
             'jt_username': user.jt_username
@@ -356,146 +324,6 @@ def api_register():
     except Exception as e:
         db.rollback()
         print(f"Ошибка регистрации: {e}")
-        return jsonify({'success': False, 'message': str(e)})
-    finally:
-        db.close()
-
-# ============================================
-# EMAIL VERIFICATION
-# ============================================
-
-def send_verification_email(email, code):
-    """Отправляет email с кодом подтверждения"""
-    smtp_server = os.environ.get('SMTP_SERVER', 'smtp.gmail.com')
-    smtp_port = int(os.environ.get('SMTP_PORT', 587))
-    smtp_user = os.environ.get('SMTP_USER', '')
-    smtp_password = os.environ.get('SMTP_PASSWORD', '')
-    
-    if not smtp_user or not smtp_password:
-        print(f"[Email] SMTP не настроен, код для {email}: {code}")
-        return False
-    
-    try:
-        msg = f"""From: Jetesk <{smtp_user}>
-To: {email}
-Subject: Подтверждение регистрации в Jetesk
-
-Ваш код подтверждения: {code}
-
-Введите этот код в приложении для завершения регистрации.
-
-Код действителен в течение 10 минут.
-
----
-Jetesk Messenger
-"""
-        
-        server = smtplib.SMTP(smtp_server, smtp_port)
-        server.starttls()
-        server.login(smtp_user, smtp_password)
-        server.sendmail(smtp_user, [email], msg)
-        server.quit()
-        
-        print(f"[Email] Код отправлен на {email}")
-        return True
-    except Exception as e:
-        print(f"[Email] Ошибка отправки: {e}")
-        return False
-
-def generate_verification_code():
-    """Генерирует 6-значный код"""
-    return str(uuid.uuid4().int)[:6].zfill(6)
-
-@app.route('/api/send-verification-code', methods=['POST'])
-def api_send_verification_code():
-    """Отправляет код подтверждения на email"""
-    data = request.json
-    email = data.get('email', '').strip().lower()
-    
-    if not email or '@' not in email or '.' not in email:
-        return jsonify({'success': False, 'message': 'Некорректный email'})
-    
-    if len(email) > 100:
-        return jsonify({'success': False, 'message': 'Email слишком длинный'})
-    
-    db = get_db()
-    try:
-        # Проверяем, есть ли уже подтверждённый пользователь с таким email
-        existing_verified = db.query(EmailVerification).filter_by(email=email, is_verified=1).first()
-        if existing_verified:
-            user = db.query(User).filter_by(username=existing_verified.email.split('@')[0]).first()
-            if user:
-                return jsonify({'success': False, 'message': 'Email уже зарегистрирован'})
-        
-        # Генерируем код
-        code = generate_verification_code()
-        expires_at = datetime.utcnow() + timedelta(minutes=10)
-        
-        # Сохраняем или обновляем запись
-        existing = db.query(EmailVerification).filter_by(email=email).first()
-        if existing:
-            existing.code = code
-            existing.expires_at = expires_at
-            existing.is_verified = 0
-            existing.created_at = datetime.utcnow()
-        else:
-            verification = EmailVerification(
-                email=email,
-                code=code,
-                expires_at=expires_at
-            )
-            db.add(verification)
-        
-        db.commit()
-        
-        # Отправляем email
-        send_verification_email(email, code)
-        
-        return jsonify({'success': True, 'message': 'Код отправлен на email'})
-    except Exception as e:
-        db.rollback()
-        print(f"Ошибка отправки кода: {e}")
-        return jsonify({'success': False, 'message': str(e)})
-    finally:
-        db.close()
-
-@app.route('/api/verify-email', methods=['POST'])
-def api_verify_email():
-    """Проверяет код подтверждения"""
-    data = request.json
-    email = data.get('email', '').strip().lower()
-    code = data.get('code', '').strip()
-    
-    if not email or not code:
-        return jsonify({'success': False, 'message': 'Введите email и код'})
-    
-    if len(code) != 6:
-        return jsonify({'success': False, 'message': 'Код должен содержать 6 символов'})
-    
-    db = get_db()
-    try:
-        verification = db.query(EmailVerification).filter_by(email=email, code=code).first()
-        
-        if not verification:
-            return jsonify({'success': False, 'message': 'Неверный код'})
-        
-        if verification.is_verified:
-            return jsonify({'success': False, 'message': 'Email уже подтверждён'})
-        
-        if verification.expires_at and datetime.utcnow() > verification.expires_at:
-            # Код истёк, удаляем
-            db.delete(verification)
-            db.commit()
-            return jsonify({'success': False, 'message': 'Код истёк, запросите новый'})
-        
-        # Помечаем как подтверждённый
-        verification.is_verified = 1
-        db.commit()
-        
-        return jsonify({'success': True, 'message': 'Email подтверждён'})
-    except Exception as e:
-        db.rollback()
-        print(f"Ошибка проверки кода: {e}")
         return jsonify({'success': False, 'message': str(e)})
     finally:
         db.close()
