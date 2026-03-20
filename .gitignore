@@ -1,0 +1,9 @@
+.env
+__pycache__/
+*.pyc
+*.db
+venv/
+.env.local
+CLOUDINARY_CLOUD_NAME=dejq2wekc
+CLOUDINARY_API_KEY=265985862821867
+CLOUDINARY_API_SECRET=5BGnSnWbnSwlqX3I8fPCXC0aRC8
