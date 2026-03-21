@@ -2053,6 +2053,18 @@
                 var btn = document.getElementById('sendBtn');
                 btn.disabled = true;
 
+                // СРАЗУ добавляем сообщение в DOM (optimistic UI)
+                var tempId = 'temp_' + Date.now();
+                addMessageToDOM({
+                    id: tempId,
+                    sender: currentUser.username,
+                    content: selectedFile ? selectedFile.name : content,
+                    created_at: new Date().toLocaleTimeString('ru-RU', {hour: '2-digit', minute:'2-digit'}),
+                    is_mine: true,
+                    file_type: selectedFileType,
+                    status: 'sending'
+                });
+
                 apiFetch('/api/send-file', { method: 'POST', body: formData })
                 .then(function(r) { if (!r.ok) throw new Error('Ошибка: ' + r.status); return r.json(); })
                 .then(function(result) {
@@ -2071,37 +2083,26 @@
             btn.disabled = true;
             input.value = '';
 
-            console.log('Отправка сообщения:', content);
-
-            apiFetch('/api/send', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({
-                    recipient_id: selectedUserId === 0 ? null : selectedUserId,
-                    content: content
-                })
-            })
-            .then(function(r) {
-                console.log('Ответ сервера:', r.status);
-                if (!r.ok) throw new Error('Ошибка сервера: ' + r.status);
-                return r.json();
-            })
-            .then(function(result) {
-                console.log('Результат:', result);
-                if (result.success) {
-                    // Загружаем актуальные сообщения сразу
-                    loadMessages();
-                    loadLastMessages();
-                } else {
-                    alert('Ошибка: ' + (result.message || 'Неизвестная ошибка'));
-                }
-                btn.disabled = false;
-            })
-            .catch(function(err) {
-                console.error('Ошибка отправки:', err);
-                alert('Ошибка: ' + err.message);
-                btn.disabled = false;
+            // СРАЗУ добавляем сообщение в DOM (optimistic UI)
+            var tempId = 'temp_' + Date.now();
+            addMessageToDOM({
+                id: tempId,
+                sender: currentUser.username,
+                content: content,
+                created_at: new Date().toLocaleTimeString('ru-RU', {hour: '2-digit', minute:'2-digit'}),
+                is_mine: true,
+                file_type: null,
+                status: 'sending'
             });
+
+            apiFetch('/api/send', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ recipient_id: selectedUserId === 0 ? null : selectedUserId, content: content }) })
+            .then(function(r) { if (!r.ok) throw new Error('Ошибка: ' + r.status); return r.json(); })
+            .then(function(result) {
+                if (result.success) { loadMessages(); loadLastMessages(); }
+                else { alert('Ошибка: ' + (result.message || 'Неизвестная ошибка')); }
+                btn.disabled = false;
+            })
+            .catch(function(err) { alert('Ошибка: ' + err.message); btn.disabled = false; });
         }
 
         // Вспомогательные функции для управления сообщениями в DOM
@@ -2255,42 +2256,45 @@
             // Запускаем смену надписей
             startLoadingPhrases();
 
-            // Предзагружаем сообщения для всех чатов (параллельно)
+            // Предзагружаем сообщения для всех чатов БЫСТРО
             preloadAllMessages().then(function() {
                 console.log('[Loading] Все сообщения загружены');
                 messagesLoaded = true;
                 
-                // Сразу показываем чат
-                stopLoadingPhrases();
-                document.getElementById('loadingScreen').style.display = 'none';
-                document.getElementById('chatPage').style.display = 'flex';
-                finishShowChat();
+                // Ждём 2 секунды (минимум для показа фраз) и показываем чат
+                setTimeout(function() {
+                    stopLoadingPhrases();
+                    document.getElementById('loadingScreen').style.display = 'none';
+                    document.getElementById('chatPage').style.display = 'flex';
+                    finishShowChat();
+                }, 2000);
             }).catch(function(err) {
                 console.error('Ошибка предзагрузки:', err);
                 messagesLoaded = true;
                 
-                // При ошибке тоже показываем чат
-                stopLoadingPhrases();
-                document.getElementById('loadingScreen').style.display = 'none';
-                document.getElementById('chatPage').style.display = 'flex';
-                finishShowChat();
+                // При ошибке тоже показываем чат через 2 секунды
+                setTimeout(function() {
+                    stopLoadingPhrases();
+                    document.getElementById('loadingScreen').style.display = 'none';
+                    document.getElementById('chatPage').style.display = 'flex';
+                    finishShowChat();
+                }, 2000);
             });
         }
         
         function startLoadingPhrases() {
             var loadingTextEl = document.getElementById('loadingText');
             loadingTextEl.className = 'loading-text';
-            
-            // Меняем надписи хаотично каждые 3.5 секунды
+
+            // Меняем надписи хаотично каждые 1.5 секунды (быстро и весело)
             loadingInterval = setInterval(function() {
-                // Выбираем случайную фразу
                 var randomIndex = Math.floor(Math.random() * loadingPhrases.length);
                 loadingTextEl.style.opacity = '0';
                 setTimeout(function() {
                     loadingTextEl.textContent = loadingPhrases[randomIndex];
                     loadingTextEl.style.opacity = '1';
                 }, 200);
-            }, 3500);
+            }, 1500);
         }
         
         function stopLoadingPhrases() {
