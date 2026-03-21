@@ -3,7 +3,6 @@ const CACHE_NAME = 'jetesk-v2';
 const STATIC_CACHE = 'jetesk-static-v2';
 const DYNAMIC_CACHE = 'jetesk-dynamic-v2';
 const API_CACHE = 'jetesk-api-v2';
-const MESSAGES_CACHE = 'jetesk-messages-v2';
 
 const STATIC_ASSETS = [
     '/',
@@ -14,7 +13,6 @@ const STATIC_ASSETS = [
 
 const MAX_CACHE_SIZE = 50;
 const MAX_CACHE_AGE = 7 * 24 * 60 * 60 * 1000; // 7 дней
-const MESSAGES_CACHE_AGE = 24 * 60 * 60 * 1000; // 24 часа для сообщений
 
 // Установка Service Worker
 self.addEventListener('install', (event) => {
@@ -39,14 +37,10 @@ self.addEventListener('activate', (event) => {
         caches.keys()
             .then((keys) => {
                 const oldCaches = keys.filter((key) =>
-                    key !== STATIC_CACHE && key !== DYNAMIC_CACHE && key !== API_CACHE && key !== MESSAGES_CACHE
+                    key !== STATIC_CACHE && key !== DYNAMIC_CACHE && key !== API_CACHE
                 );
                 return Promise.all([
                     ...oldCaches.map((key) => caches.delete(key)),
-                    // Очищаем кэш сообщений при активации
-                    caches.open(MESSAGES_CACHE).then((cache) => {
-                        console.log('[SW] Кэш сообщений готов');
-                    }),
                     self.clients.claim()
                 ]);
             })
@@ -150,7 +144,7 @@ self.addEventListener('fetch', (event) => {
     const { request } = event;
     const url = new URL(request.url);
 
-    // Пропускаем не-GET запросы (отправка сообщений и т.д.)
+    // Пропускаем не-GET запросы
     if (request.method !== 'GET') {
         return;
     }
@@ -160,23 +154,27 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    // Исключаем запросы на отправку сообщений (POST через query params или специальные endpoints)
-    if (url.pathname.includes('/send') || url.searchParams.has('send')) {
-        return;
-    }
-
-    // API сообщений - Cache First с фоновым обновлением (24 часа)
-    if (url.pathname.includes('/api/messages')) {
-        event.respondWith(
-            cacheFirstWithBackgroundUpdate(request, MESSAGES_CACHE, MESSAGES_CACHE_AGE)
-        );
-        return;
-    }
-
-    // Остальные API - Cache First с фоновым обновлением (7 дней)
+    // API запросы - Network First с fallback в кэш
     if (url.pathname.includes('/api/')) {
         event.respondWith(
-            cacheFirstWithBackgroundUpdate(request, API_CACHE, MAX_CACHE_AGE)
+            fetch(request)
+                .then((response) => {
+                    // Клонируем ответ для кэширования
+                    const responseClone = response.clone();
+                    caches.open(API_CACHE).then((cache) => {
+                        cache.put(request, responseClone);
+                    });
+                    return response;
+                })
+                .catch(() => {
+                    // Offline - возвращаем из кэша
+                    return caches.match(request).then((cached) => {
+                        return cached || new Response(JSON.stringify({error: 'offline'}), {
+                            status: 200,
+                            headers: {'Content-Type': 'application/json'}
+                        });
+                    });
+                })
         );
         return;
     }
@@ -272,70 +270,4 @@ function trimCache(cacheName, maxItems) {
             }
         });
     });
-}
-
-// Сохранение ответа в кэш с временной меткой
-async function cacheResponse(cacheName, request, response) {
-    const cache = await caches.open(cacheName);
-    const headers = new Headers(response.headers);
-    headers.set('sw-fetched-time', new Date().toUTCString());
-    const clonedResponse = response.clone();
-    await cache.put(request, clonedResponse);
-}
-
-// Проверка возраста кэша
-function isCacheStale(cachedResponse, maxAge) {
-    if (!cachedResponse) return true;
-    const cachedTime = cachedResponse.headers.get('sw-fetched-time');
-    if (!cachedTime) return true;
-    const age = Date.now() - new Date(cachedTime).getTime();
-    return age > maxAge;
-}
-
-// Cache First с фоновым обновлением
-async function cacheFirstWithBackgroundUpdate(request, cacheName, maxAge) {
-    const cache = await caches.open(cacheName);
-    const cached = await cache.match(request);
-    
-    if (cached) {
-        console.log(`[SW] ${cacheName}: из кэша`, request.url);
-        
-        // Если кэш ещё актуален, отдаём его
-        if (!isCacheStale(cached, maxAge)) {
-            // Фоновое обновление, если кэш старше 50% от maxAge
-            const cachedTime = new Date(cached.headers.get('sw-fetched-time')).getTime();
-            const age = Date.now() - cachedTime;
-            if (age > maxAge * 0.5) {
-                console.log(`[SW] ${cacheName}: фоновое обновление`, request.url);
-                fetchAndCache(request, cacheName).catch(console.error);
-            }
-            return cached;
-        }
-        
-        // Кэш устарел — обновляем в фоне и отдаём старую версию
-        console.log(`[SW] ${cacheName}: кэш устарел, обновляем в фоне`, request.url);
-        fetchAndCache(request, cacheName).catch(console.error);
-        return cached;
-    }
-    
-    // Кэша нет — загружаем из сети
-    console.log(`[SW] ${cacheName}: загрузка из сети`, request.url);
-    return fetchAndCache(request, cacheName);
-}
-
-// Загрузка из сети и сохранение в кэш
-async function fetchAndCache(request, cacheName) {
-    try {
-        const response = await fetch(request, { redirect: 'manual' });
-        if (response.ok && response.type === 'basic') {
-            await cacheResponse(cacheName, request, response);
-        }
-        return response;
-    } catch (error) {
-        console.log(`[SW] ${cacheName}: ошибка сети`, request.url, error);
-        return new Response(JSON.stringify({error: 'offline'}), {
-            status: 200,
-            headers: {'Content-Type': 'application/json'}
-        });
-    }
 }
