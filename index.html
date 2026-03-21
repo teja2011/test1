@@ -996,6 +996,47 @@
         var DB_VERSION = 1;
         var DB_NAME = 'JeteskMessagesDB';
         var STORE_NAME = 'messages';
+        
+        // === 1) Умное кэширование в памяти (L1 Cache) ===
+        var memoryCache = {
+            messages: {}, // { userId: { data, timestamp } }
+            maxSize: 50, // Максимум 50 чатов в памяти
+            maxAge: 5 * 60 * 1000 // 5 минут
+        };
+        
+        function getFromMemoryCache(userId) {
+            var cached = memoryCache.messages[userId];
+            if (!cached) return null;
+            
+            // Проверяем возраст кэша
+            if (Date.now() - cached.timestamp > memoryCache.maxAge) {
+                delete memoryCache.messages[userId];
+                return null;
+            }
+            
+            console.log('[L1 Cache] Из памяти:', userId);
+            return cached.data;
+        }
+        
+        function saveToMemoryCache(userId, data) {
+            // Очищаем старые записи если достигнут лимит
+            var keys = Object.keys(memoryCache.messages);
+            if (keys.length >= memoryCache.maxSize) {
+                // Удаляем половину самых старых
+                keys.sort(function(a, b) {
+                    return memoryCache.messages[a].timestamp - memoryCache.messages[b].timestamp;
+                });
+                for (var i = 0; i < Math.floor(keys.length / 2); i++) {
+                    delete memoryCache.messages[keys[i]];
+                }
+            }
+            
+            memoryCache.messages[userId] = {
+                data: data,
+                timestamp: Date.now()
+            };
+            console.log('[L1 Cache] Сохранено в память:', userId);
+        }
 
         function apiFetch(url, options) {
             options = options || {};
@@ -1621,35 +1662,40 @@
             var url = selectedUserId === 0 ? '/api/messages' : '/api/messages/' + selectedUserId;
             var userId = selectedUserId;
 
-            // 1. СРАЗУ загружаем из кэша IndexedDB
-            getMessagesFromCache(userId).then(function(cachedMessages) {
-                if (cachedMessages && cachedMessages.length > 0) {
-                    console.log('[IndexedDB] Загружено из кэша:', cachedMessages.length);
-                    messages = cachedMessages;
-                    renderMessages();
-                }
+            // === 1) СНАЧАЛА проверяем кэш в памяти (мгновенно) ===
+            var memoryCached = getFromMemoryCache(userId);
+            if (memoryCached) {
+                messages = memoryCached;
+                renderMessages();
+                // Медиа загружаются лениво (см. renderMessages)
+            }
 
-                // 2. В фоне загружаем с сервера
-                apiFetch(url)
-                    .then(function(r) {
-                        if (!r.ok) return null;
-                        return r.json();
-                    })
-                    .then(function(data) {
-                        if (data && data.length >= 0) {
-                            messages = data;
-                            renderMessages();
-                            // Сохраняем в кэш только если есть данные
-                            if (data.length > 0) {
-                                saveMessagesToCache(data, userId).catch(console.error);
-                            }
+            // === 2) Параллельно загружаем с сервера ===
+            apiFetch(url)
+                .then(function(r) {
+                    if (!r.ok) return null;
+                    return r.json();
+                })
+                .then(function(data) {
+                    if (data) {
+                        console.log('[API] Загружено с сервера:', data.length);
+                        messages = data;
+                        
+                        // Сохраняем в кэш памяти
+                        saveToMemoryCache(userId, data);
+                        
+                        // Сохраняем в IndexedDB (L3 Cache)
+                        if (data.length > 0) {
+                            saveMessagesToCache(data, userId).catch(console.error);
                         }
-                        if (selectedUserId !== 0) {
-                            markMessagesAsRead(selectedUserId);
-                        }
-                    })
-                    .catch(console.error);
-            }).catch(console.error);
+                        
+                        renderMessages();
+                    }
+                    if (selectedUserId !== 0) {
+                        markMessagesAsRead(selectedUserId);
+                    }
+                })
+                .catch(console.error);
         }
 
         function markMessagesAsRead(senderId) {
@@ -1713,11 +1759,16 @@
             var endIndex = Math.min(messages.length, Math.ceil((scrollTop + containerHeight) / ITEM_HEIGHT_MESSAGES) + MSG_OVERSCAN);
 
             var html = '<div style="height:' + (startIndex * ITEM_HEIGHT_MESSAGES) + 'px;"></div>';
-            
+
             for (var i = startIndex; i < endIndex; i++) {
                 var msg = messages[i];
                 var bubbleContent = '';
-                if (msg.file_type === 'image') bubbleContent = '<img src="' + msg.content + '" class="chat-img" onclick="window.open(this.src)" style="max-width:200px;border-radius:8px;cursor:pointer;">';
+                // === 2) Ленивая загрузка медиа — сначала текст, потом фото ===
+                if (msg.file_type === 'image') {
+                    // Используем data-src для ленивой загрузки
+                    bubbleContent = '<div class="image-placeholder" style="width:200px;height:150px;background:var(--surface);border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--text-secondary);font-size:12px;">🖼️ Фото</div>' +
+                        '<img data-src="' + msg.content + '" class="chat-img lazy" onload="this.previousElementSibling && this.previousElementSibling.remove()" style="max-width:200px;border-radius:8px;cursor:pointer;display:none;" onclick="window.open(this.src)">';
+                }
                 else if (msg.file_type === 'file') bubbleContent = '<a href="' + msg.content + '" download class="file-attachment" style="color:var(--primary);">📄 Файл</a>';
                 else bubbleContent = escapeHtml(msg.content);
 
@@ -1733,9 +1784,12 @@
                     '<div class="message-bubble" style="background:' + (msg.is_mine ? 'var(--primary)' : 'var(--surface)') + ';color:' + (msg.is_mine ? 'white' : 'var(--text)') + ';padding:10px 14px;border-radius:16px;max-width:70%;word-wrap:break-word;">' + bubbleContent + '</div>' +
                     '<div class="message-time" style="font-size:11px;color:var(--text-secondary);margin-left:8px;align-self:flex-end;white-space:nowrap;">' + escapeHtml(msg.sender) + ' • ' + moscowTime + statusIcon + '</div></div>';
             }
-            
+
             html += '<div style="height:' + ((messages.length - endIndex) * ITEM_HEIGHT_MESSAGES) + 'px;"></div>';
             container.innerHTML = html;
+            
+            // === Ленивая загрузка изображений (Intersection Observer) ===
+            setTimeout(initLazyLoading, 100);
         }
 
         function renderMessages() {
@@ -1756,7 +1810,11 @@
             var html = '';
             messages.forEach(function(msg) {
                 var bubbleContent = '';
-                if (msg.file_type === 'image') bubbleContent = '<img src="' + msg.content + '" class="chat-img" onclick="window.open(this.src)">';
+                // === 2) Ленивая загрузка медиа ===
+                if (msg.file_type === 'image') {
+                    bubbleContent = '<div class="image-placeholder" style="width:200px;height:150px;background:var(--surface);border-radius:8px;display:inline-block;">🖼️ Фото</div>' +
+                        '<img data-src="' + msg.content + '" class="chat-img lazy" onload="this.previousElementSibling && this.previousElementSibling.remove()" style="max-width:200px;border-radius:8px;cursor:pointer;display:none;" onclick="window.open(this.src)">';
+                }
                 else if (msg.file_type === 'file') bubbleContent = '<a href="' + msg.content + '" download class="file-attachment">📄 Файл</a>';
                 else bubbleContent = escapeHtml(msg.content);
                 var statusIcon = '';
@@ -1779,12 +1837,48 @@
                     '</div>';
             });
             container.innerHTML = html;
+            
+            // === Ленивая загрузка изображений ===
+            setTimeout(initLazyLoading, 100);
+        }
+        
+        // === 2) Intersection Observer для ленивой загрузки ===
+        var lazyImageObserver = null;
+        
+        function initLazyLoading() {
+            if (!('IntersectionObserver' in window)) {
+                // Если не поддерживается, загружаем все сразу
+                var lazyImages = document.querySelectorAll('img.lazy');
+                lazyImages.forEach(function(img) {
+                    img.src = img.getAttribute('data-src');
+                    img.style.display = 'block';
+                });
+                return;
+            }
+            
+            if (lazyImageObserver) return; 
+            
+            lazyImageObserver = new IntersectionObserver(function(entries) {
+                entries.forEach(function(entry) {
+                    if (entry.isIntersecting) {
+                        var lazyImage = entry.target;
+                        lazyImage.src = lazyImage.getAttribute('data-src');
+                        lazyImage.style.display = 'block';
+                        lazyImageObserver.unobserve(lazyImage);
+                    }
+                });
+            }, { rootMargin: '200px' }); // Загружать за 200px до появления
+            
+            var lazyImages = document.querySelectorAll('img.lazy');
+            lazyImages.forEach(function(img) {
+                lazyImageObserver.observe(img);
+            });
+        }
             setTimeout(function() {
                 container.scrollTop = container.scrollHeight;
                 document.getElementById('scrollToBottomBtn').style.display = 'none';
             }, 50);
-        }
-
+        
         function scrollToBottom() {
             var container = document.getElementById('messagesContainer');
             if (container) {
@@ -2075,7 +2169,8 @@
                         };
                         messages.push(newMessage);
                         
-                        // СРАЗУ сохраняем в кэш и перерисовываем
+                        // СРАЗУ сохраняем в кэш памяти и IndexedDB
+                        saveToMemoryCache(selectedUserId, messages);
                         saveMessagesToCache(messages, selectedUserId).then(function() {
                             renderMessages();
                         }).catch(function(err) {
@@ -2134,7 +2229,8 @@
                     };
                     messages.push(newMessage);
                     
-                    // СРАЗУ сохраняем в кэш и перерисовываем
+                    // СРАЗУ сохраняем в кэш памяти и IndexedDB
+                    saveToMemoryCache(selectedUserId, messages);
                     saveMessagesToCache(messages, selectedUserId).then(function() {
                         renderMessages();
                     }).catch(function(err) {
@@ -2821,7 +2917,7 @@
             var username = input.value.trim().replace('@', '');
             
             if (!username) {
-                // Если пусто - удаляем username
+                // Е��ли пусто - удаляем username
                 setjtUsername('').then(function(result) {
                     if (result.success) {
                         updatejtUsernameStatus('Username уд����лён', false);
