@@ -1253,8 +1253,76 @@
         }
 
         function logout() {
-            apiFetch('/api/logout').then(function() {
+            // Сохраняем все текущие сообщения перед выходом
+            console.log('[Logout] Сохранение сообщений перед выходом...');
+            saveAllMessagesBeforeLogout().then(function() {
+                console.log('[Logout] Сообщения сохранены');
+                
+                // Показываем экран загрузки на 5 секунд перед выходом
+                showLogoutLoadingScreen().then(function() {
+                    // Выполняем выход
+                    apiFetch('/api/logout').then(function() {
+                        location.reload();
+                    });
+                });
+            }).catch(function(err) {
+                console.error('[Logout] Ошибка сохранения:', err);
                 location.reload();
+            });
+        }
+        
+        function saveAllMessagesBeforeLogout() {
+            return new Promise(function(resolve) {
+                // Сохраняем текущий чат в память
+                if (messages.length > 0) {
+                    saveToMemoryCache(selectedUserId, messages);
+                }
+                
+                // Сохраняем в IndexedDB
+                if (messages.length > 0) {
+                    saveMessagesToCache(messages, selectedUserId)
+                        .then(resolve)
+                        .catch(resolve); // Продолжаем даже при ошибке
+                } else {
+                    resolve();
+                }
+            });
+        }
+        
+        function showLogoutLoadingScreen() {
+            return new Promise(function(resolve) {
+                var loadingPhrases = [
+                    'Сохраняем твою переписку...',
+                    'Синхронизируем с облаком...',
+                    'Готовимся к следующему входу...',
+                    'До встречи!',
+                    'Возвращайся скорее!'
+                ];
+                
+                // Показываем экран загрузки
+                document.getElementById('chatPage').style.display = 'none';
+                document.getElementById('loadingScreen').style.display = 'flex';
+                
+                var loadingTextEl = document.getElementById('loadingText');
+                var phraseIndex = 0;
+                
+                // Меняем надписи каждые 1 секунду
+                var interval = setInterval(function() {
+                    phraseIndex = (phraseIndex + 1) % loadingPhrases.length;
+                    loadingTextEl.style.opacity = '0';
+                    setTimeout(function() {
+                        loadingTextEl.textContent = loadingPhrases[phraseIndex];
+                        loadingTextEl.style.opacity = '1';
+                    }, 200);
+                }, 1000);
+                
+                // Через 5 секунд показываем экран входа
+                setTimeout(function() {
+                    clearInterval(interval);
+                    document.getElementById('loadingScreen').style.display = 'none';
+                    document.getElementById('loginPage').style.display = 'flex';
+                    resolve();
+                }, 5000);
             });
         }
 
@@ -2398,33 +2466,54 @@
             document.getElementById('loginPage').style.display = 'none';
             document.getElementById('loadingScreen').style.display = 'flex';
             document.getElementById('chatPage').style.display = 'none';
-            
+
             // Запускаем смену надписей
             startLoadingPhrases();
-            
-            // Предзагружаем сообщения для всех чатов (параллельно)
-            preloadAllMessages().then(function() {
-                console.log('[Loading] Все сообщения загружены, ждём 5 секунд...');
-                messagesLoaded = true;
+
+            // === 3) Восстанавливаем кэш при входе (аналог TDLib) ===
+            restoreSessionFromCache().then(function() {
+                console.log('[Restore] Кэш восстановлен');
                 
-                // Ждём ещё 5 секунд перед показом чата
+                // Предзагружаем сообщения для всех чатов
+                return preloadAllMessages();
+            }).then(function() {
+                console.log('[Preload] Все сообщения загружены');
+                messagesLoaded = true;
+
+                // Ждём ещё 2 секунды перед показом чата
                 setTimeout(function() {
                     stopLoadingPhrases();
                     document.getElementById('loadingScreen').style.display = 'none';
                     document.getElementById('chatPage').style.display = 'flex';
                     finishShowChat();
-                }, 5000);
+                }, 2000);
             }).catch(function(err) {
-                console.error('Ошибка предзагрузки:', err);
+                console.error('Ошибка восстановления:', err);
                 messagesLoaded = true;
-                
-                // Даже при ошибке ждём 5 секунд
-                setTimeout(function() {
-                    stopLoadingPhrases();
-                    document.getElementById('loadingScreen').style.display = 'none';
-                    document.getElementById('chatPage').style.display = 'flex';
-                    finishShowChat();
-                }, 5000);
+                stopLoadingPhrases();
+                document.getElementById('loadingScreen').style.display = 'none';
+                document.getElementById('chatPage').style.display = 'flex';
+                finishShowChat();
+            });
+        }
+        
+        function restoreSessionFromCache() {
+            return new Promise(function(resolve) {
+                // Восстанавливаем последний открытый чат из IndexedDB
+                if (selectedUserId !== 0) {
+                    getMessagesFromCache(selectedUserId).then(function(cachedMessages) {
+                        if (cachedMessages && cachedMessages.length > 0) {
+                            console.log('[Restore] Восстановлено сообщений из кэша:', cachedMessages.length);
+                            messages = cachedMessages;
+                            saveToMemoryCache(selectedUserId, cachedMessages);
+                        }
+                        resolve();
+                    }).catch(function() {
+                        resolve();
+                    });
+                } else {
+                    resolve();
+                }
             });
         }
         
@@ -2467,6 +2556,7 @@
                                     // Сохраняем только если данные есть
                                     if (data && data.length > 0) {
                                         saveMessagesToCache(data, 0).catch(console.error);
+                                        saveToMemoryCache(0, data);
                                     }
                                 })
                                 .catch(console.error)
@@ -2482,6 +2572,7 @@
                                             // Сохраняем только если данные есть
                                             if (data && data.length > 0) {
                                                 saveMessagesToCache(data, user.id).catch(console.error);
+                                                saveToMemoryCache(user.id, data);
                                             }
                                         })
                                         .catch(console.error)
@@ -2818,7 +2909,7 @@
                     }
                     var contentType = r.headers.get('content-type');
                     if (!contentType || !contentType.includes('application/json')) {
-                        throw new Error('Сервер вернул не JSON');
+                        throw new Error('Серве�� вернул не JSON');
                     }
                     return r.json();
                 })
@@ -2840,7 +2931,7 @@
         // === Обработчики событий ===
 
         function clearMessages() {
-            if (!confirm('Вы уверены, что хотите удалить все свои сообщения? Это действие нельзя отменить.')) {
+            if (!confirm('Вы уверены, что хотите удалить все свои сообщения? Это действие нель��я отменить.')) {
                 return;
             }
 
