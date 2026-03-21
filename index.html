@@ -1580,7 +1580,7 @@
                 <button class="btn" id="settingsLogoutBtn" style="background: var(--surface); border: 1px solid var(--border); margin-top: 8px;">🚪 Выйти из аккаунта</button>\
             ';
 
-            // Навеши����������������������������������аем обработчики
+            // Навеши������������������������������������аем обработчики
             document.getElementById('settingsSavejtUsernameBtn').addEventListener('click', settingsSavejtUsername);
             document.getElementById('settingsChangeUsernameBtn').addEventListener('click', settingsChangeUsername);
             document.getElementById('settingsClearMessagesBtn').addEventListener('click', clearMessages);
@@ -2438,11 +2438,35 @@
                 updateOnlineStatus();
             }, 10000);
 
-            // Обновляем последние сообщения каждые 10 секунд (без loadUsers)
+            // Обновляем последние сообщения каждые 5 секунд
             if (lastMessagesInterval) clearInterval(lastMessagesInterval);
             lastMessagesInterval = setInterval(function() {
                 loadLastMessages();
-            }, 10000);
+            }, 5000);
+            
+            // === Автообновление сообщений каждые 5 секунд (как перезаход в чат) ===
+            if (window.messagesAutoRefresh) clearInterval(window.messagesAutoRefresh);
+            window.messagesAutoRefresh = setInterval(function() {
+                // Обновляем только если чат открыт
+                if (typeof selectedUserId !== 'undefined' && selectedUserId !== null) {
+                    // Сохраняем текущую позицию скролла
+                    var container = document.getElementById('messagesContainer');
+                    if (container) {
+                        var scrollHeight = container.scrollHeight;
+                        var scrollTop = container.scrollTop;
+                        var isAtBottom = (scrollHeight - scrollTop - container.clientHeight < 50);
+                        
+                        // Загружаем сообщения
+                        loadMessages();
+                        
+                        // Если были внизу - остаемся внизу
+                        if (isAtBottom) {
+                            setTimeout(function() { scrollToBottom(); }, 100);
+                        }
+                        // Если не внизу - сохраняем позицию (пользователь читает историю)
+                    }
+                }
+            }, 5000);
 
             // Инициализируем вкладки и показываем навигацию
             initTabs();
