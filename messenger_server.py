@@ -179,17 +179,23 @@ else:
     _tables_initialized = True
 
 def ensure_tables():
-    """Гарантировать что таблицы существуют (для serverless)"""
+    """Гарантировать что таблицы существуют (для serverless/Supabase)"""
     global _tables_initialized
-    if not _tables_initialized:
-        try:
-            with engine.connect() as conn:
-                pass
-            Base.metadata.create_all(engine)
-            _tables_initialized = True
-            print("[DB] Tables ensured")
-        except Exception as e:
-            print(f"[DB] Error ensuring tables: {e}")
+    if _tables_initialized:
+        return True
+    try:
+        # Проверяем подключение
+        with engine.connect() as conn:
+            pass
+        # Создаём таблицы
+        Base.metadata.create_all(engine)
+        _tables_initialized = True
+        print("[DB] Tables ensured for serverless")
+        return True
+    except Exception as e:
+        print(f"[DB] Error ensuring tables: {e}")
+        # Не блокируем запрос - возможно таблицы уже существуют
+        return False
 
 def create_notification(db, user_id, message, sender_id=None, notif_type='message'):
     """Создаёт уведомление для пользователя"""
@@ -221,6 +227,11 @@ def get_current_user():
         db.close()
         print(f"Error getting current user: {e}")
         return None
+
+@app.before_request
+def before_request():
+    """Гарантировать что таблицы существуют перед каждым запросом (для serverless)"""
+    ensure_tables()
 
 def generate_avatar_color():
     import random
