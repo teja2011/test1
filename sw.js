@@ -21,7 +21,20 @@ self.addEventListener('install', (event) => {
         caches.open(STATIC_CACHE)
             .then((cache) => {
                 console.log('[SW] Кэширование статики');
-                return cache.addAll(STATIC_ASSETS);
+                // Кэшируем только основные файлы, игнорируя ошибки
+                return Promise.all(
+                    STATIC_ASSETS.map(url => {
+                        return fetch(url)
+                            .then(response => {
+                                if (response.ok) {
+                                    return cache.put(url, response);
+                                }
+                            })
+                            .catch(err => {
+                                console.log('[SW] Не закэшировано:', url, err);
+                            });
+                    })
+                );
             })
             .then(() => self.skipWaiting())
             .catch((err) => {
