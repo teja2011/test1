@@ -1607,12 +1607,17 @@
             selectedUserId = userId;
             selectedUsername = username;
             document.getElementById('chatTitle').textContent = '💬 ' + username;
-            
+
             // Сначала обновляем выделение в списке
             renderUsers();
-            
+
             // Затем загружаем сообщения
             loadMessages();
+            
+            // Отмечаем сообщения как прочитанные (только при переключении чата!)
+            if (userId !== 0) {
+                markMessagesAsRead(userId);
+            }
 
             // Переключаемся на вид чата
             showChatView();
@@ -1635,64 +1640,34 @@
         function loadMessages() {
             var url = selectedUserId === 0 ? '/api/messages' : '/api/messages/' + selectedUserId;
             var userId = selectedUserId;
-            
-            // Сохраняем локальные сообщения (которые ещё не на сервере)
-            var localMessages = messages.filter(function(msg) {
-                return msg.id && msg.id.toString().includes('temp_');
-            });
 
-            // 1. Загружаем из кэша IndexedDB
-            getMessagesFromCache(userId).then(function(cachedMessages) {
-                if (cachedMessages && cachedMessages.length > 0) {
-                    console.log('[IndexedDB] Загружено из кэша:', cachedMessages.length);
-                    
-                    // Добавляем локальные сообщения к кэшу
-                    if (localMessages.length > 0) {
-                        cachedMessages = cachedMessages.concat(localMessages);
-                    }
-                    
-                    messages = cachedMessages;
+            // Загружаем СРАЗУ с сервера — быстро и без костылей
+            apiFetch(url)
+                .then(function(r) {
+                    if (!r.ok) throw new Error('HTTP ' + r.status);
+                    return r.json();
+                })
+                .then(function(data) {
+                    console.log('[API] Загружено сообщений:', data.length);
+                    messages = data;
                     renderMessages();
-                }
-
-                // 2. В фоне загружаем с сервера
-                apiFetch(url)
-                    .then(function(r) {
-                        if (!r.ok) return null;
-                        return r.json();
-                    })
-                    .then(function(data) {
-                        if (data) {
-                            console.log('[API] Загружено с сервера:', data.length);
-                            
-                            // === СЛИЯНИЕ: добавляем локальные сообщения к серверным ===
-                            if (localMessages.length > 0) {
-                                console.log('[API] Добавлено локальных сообщений:', localMessages.length);
-                                data = data.concat(localMessages);
-                                
-                                // Удаляем дубликаты (если temp_ сообщение уже на сервере)
-                                var seenIds = {};
-                                data = data.filter(function(msg) {
-                                    if (seenIds[msg.id]) return false;
-                                    seenIds[msg.id] = true;
-                                    return true;
-                                });
-                            }
-                            
-                            messages = data;
+                    
+                    // Сохраняем в IndexedDB про запас (offline)
+                    if (data.length > 0) {
+                        saveMessagesToCache(data, userId).catch(console.error);
+                    }
+                })
+                .catch(function(err) {
+                    console.error('Ошибка загрузки:', err);
+                    // Пробуем из кэша только если сеть не работает
+                    getMessagesFromCache(userId).then(function(cached) {
+                        if (cached && cached.length > 0) {
+                            console.log('[Offline] Из кэша:', cached.length);
+                            messages = cached;
                             renderMessages();
-                            
-                            // Сохраняем в кэш только если есть данные
-                            if (data.length > 0) {
-                                saveMessagesToCache(data, userId).catch(console.error);
-                            }
                         }
-                        if (selectedUserId !== 0) {
-                            markMessagesAsRead(selectedUserId);
-                        }
-                    })
-                    .catch(console.error);
-            }).catch(console.error);
+                    }).catch(console.error);
+                });
         }
 
         function markMessagesAsRead(senderId) {
@@ -2072,76 +2047,25 @@
                 var fileData = selectedFileData;
                 var fileType = selectedFileType;
 
-                // Проверяем размер данных (iPhone может иметь ограничения)
-                var dataSize = fileData.length;
-                console.log('Размер файла (bytes):', selectedFile ? selectedFile.size : 0);
-                console.log('Размер base64 данных:', dataSize);
-
+                // Если есть выбранный файл - отправляем его
+            if (selectedFileData) {
                 var formData = new FormData();
                 formData.append('file', selectedFile);
                 formData.append('recipient_id', selectedUserId === 0 ? null : selectedUserId);
-                formData.append('file_data', fileData);
-                formData.append('file_type', fileType);
+                formData.append('file_data', selectedFileData);
+                formData.append('file_type', selectedFileType);
 
                 var btn = document.getElementById('sendBtn');
                 btn.disabled = true;
 
-                console.log('Отправка файла на сервер...', {
-                    fileType: fileType,
-                    dataSize: dataSize,
-                    fileName: selectedFile ? selectedFile.name : 'unknown'
-                });
-
-                apiFetch('/api/send-file', {
-                    method: 'POST',
-                    body: formData
-                })
-                .then(function(r) {
-                    console.log('Ответ сервера:', r.status, r.statusText);
-                    if (!r.ok) {
-                        return r.text().then(function(text) {
-                            throw new Error('Ошибка сервера: ' + r.status + ' - ' + text);
-                        });
-                    }
-                    return r.json();
-                })
+                apiFetch('/api/send-file', { method: 'POST', body: formData })
+                .then(function(r) { if (!r.ok) throw new Error('Ошибка: ' + r.status); return r.json(); })
                 .then(function(result) {
-                    console.log('[SEND FILE] Результат:', result);
-                    if (result.success) {
-                        clearFilePreview();
-                        
-                        // Добавляем сообщение в массив
-                        var newMessage = {
-                            id: result.id || tempId,
-                            sender: currentUser.username,
-                            content: selectedFile ? selectedFile.name : content,
-                            created_at: new Date().toLocaleTimeString('ru-RU', {hour: '2-digit', minute:'2-digit'}),
-                            is_mine: true,
-                            file_type: fileType,
-                            status: 'sent'
-                        };
-                        messages.push(newMessage);
-                        
-                        // Сохраняем в кэш и ждём завершения перед перерисовкой
-                        saveMessagesToCache(messages, selectedUserId).then(function() {
-                            console.log('[SEND FILE] Сообщение сохранено в кэш');
-                            renderMessages();
-                        }).catch(function(err) {
-                            console.error('[IndexedDB] Ошибка сохранения:', err);
-                            renderMessages(); // Всё равно показываем
-                        });
-                        
-                        loadLastMessages();
-                    } else {
-                        alert('Ошибка: ' + (result.message || 'Неизвестная ошибка'));
-                        removeMessageFromDOM(tempId);
-                    }
+                    if (result.success) { clearFilePreview(); loadMessages(); loadLastMessages(); }
+                    else { alert('Ошибка: ' + result.message); }
+                    btn.disabled = false;
                 })
-                .catch(function(err) {
-                    console.error('Ошибка отправки файла:', err);
-                    alert('Ошибка отправки: ' + err.message);
-                    removeMessageFromDOM(tempId);
-                });
+                .catch(function(err) { alert('Ошибка: ' + err.message); btn.disabled = false; });
                 return;
             }
 
@@ -2152,7 +2076,7 @@
             btn.disabled = true;
             input.value = '';
 
-            console.log('Отправка сообщения:', content, 'recipient:', selectedUserId);
+            console.log('Отправка сообщения:', content);
 
             apiFetch('/api/send', {
                 method: 'POST',
@@ -2168,39 +2092,20 @@
                 return r.json();
             })
             .then(function(result) {
-                console.log('[SEND] Результат:', result);
+                console.log('Результат:', result);
                 if (result.success) {
-                    // Добавляем сообщение в массив
-                    var newMessage = {
-                        id: result.id,
-                        sender: currentUser.username,
-                        content: content,
-                        created_at: new Date().toLocaleTimeString('ru-RU', {hour: '2-digit', minute:'2-digit'}),
-                        is_mine: true,
-                        file_type: null,
-                        status: 'sent'
-                    };
-                    messages.push(newMessage);
-                    
-                    // Сохраняем в кэш и ждём завершения перед перерисовкой
-                    saveMessagesToCache(messages, selectedUserId).then(function() {
-                        console.log('[SEND] Сообщение сохранено в кэш');
-                        renderMessages();
-                    }).catch(function(err) {
-                        console.error('[IndexedDB] Ошибка сохранения:', err);
-                        renderMessages(); // Всё равно показываем
-                    });
-                    
+                    // Загружаем актуальные сообщения сразу
+                    loadMessages();
                     loadLastMessages();
                 } else {
                     alert('Ошибка: ' + (result.message || 'Неизвестная ошибка'));
-                    removeMessageFromDOM(tempId);
                 }
+                btn.disabled = false;
             })
             .catch(function(err) {
                 console.error('Ошибка отправки:', err);
                 alert('Ошибка: ' + err.message);
-                removeMessageFromDOM(tempId);
+                btn.disabled = false;
             });
         }
 
@@ -2357,27 +2262,23 @@
 
             // Предзагружаем сообщения для всех чатов (параллельно)
             preloadAllMessages().then(function() {
-                console.log('[Loading] Все сообщения загружены, ждём 5 секунд...');
+                console.log('[Loading] Все сообщения загружены');
                 messagesLoaded = true;
-
-                // Ждём ещё 5 секунд перед показом чата
-                setTimeout(function() {
-                    stopLoadingPhrases();
-                    document.getElementById('loadingScreen').style.display = 'none';
-                    document.getElementById('chatPage').style.display = 'flex';
-                    finishShowChat();
-                }, 5000);
+                
+                // Сразу показываем чат
+                stopLoadingPhrases();
+                document.getElementById('loadingScreen').style.display = 'none';
+                document.getElementById('chatPage').style.display = 'flex';
+                finishShowChat();
             }).catch(function(err) {
                 console.error('Ошибка предзагрузки:', err);
                 messagesLoaded = true;
-
-                // Даже при ошибке ждём 5 секунд
-                setTimeout(function() {
-                    stopLoadingPhrases();
-                    document.getElementById('loadingScreen').style.display = 'none';
-                    document.getElementById('chatPage').style.display = 'flex';
-                    finishShowChat();
-                }, 5000);
+                
+                // При ошибке тоже показываем чат
+                stopLoadingPhrases();
+                document.getElementById('loadingScreen').style.display = 'none';
+                document.getElementById('chatPage').style.display = 'flex';
+                finishShowChat();
             });
         }
         
@@ -2489,35 +2390,11 @@
                 updateOnlineStatus();
             }, 10000);
 
-            // Обновляем последние сообщения каждые 5 секунд
+            // Обновляем последние сообщения каждые 10 секунд
             if (lastMessagesInterval) clearInterval(lastMessagesInterval);
             lastMessagesInterval = setInterval(function() {
                 loadLastMessages();
-            }, 5000);
-            
-            // === Автообновление сообщений каждые 3 секунды (баланс между скоростью и нагрузкой) ===
-            if (window.messagesAutoRefresh) clearInterval(window.messagesAutoRefresh);
-            window.messagesAutoRefresh = setInterval(function() {
-                // Обновляем только если чат открыт
-                if (typeof selectedUserId !== 'undefined' && selectedUserId !== null) {
-                    // Сохраняем текущую позицию скролла
-                    var container = document.getElementById('messagesContainer');
-                    if (container) {
-                        var scrollHeight = container.scrollHeight;
-                        var scrollTop = container.scrollTop;
-                        var isAtBottom = (scrollHeight - scrollTop - container.clientHeight < 50);
-                        
-                        // Загружаем сообщения
-                        loadMessages();
-                        
-                        // Если были внизу - остаемся внизу
-                        if (isAtBottom) {
-                            setTimeout(function() { scrollToBottom(); }, 100);
-                        }
-                        // Если не внизу - сохраняем позицию (пользователь читает историю)
-                    }
-                }
-            }, 3000);
+            }, 10000);
 
             // Инициализируем вкладки и показываем навигацию
             initTabs();
