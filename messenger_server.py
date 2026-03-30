@@ -11,7 +11,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from flask_cors import CORS
 import smtplib
 from dotenv import load_dotenv
-import libsql_client
+import sqlite3
 
 # Загружаем .env только локально (не на Vercel)
 if not os.environ.get('VERCEL'):
@@ -47,39 +47,25 @@ if KEEPALIVE_URL:
     keepalive_thread.start()
     print(f"[Keep-Alive] Started with interval {KEEPALIVE_INTERVAL}s")
 
-# Turso (libSQL) настройка
-DATABASE_URL = os.environ.get('TURSO_DATABASE_URL')
-TURSO_AUTH_TOKEN = os.environ.get('TURSO_AUTH_TOKEN')
-
-if DATABASE_URL and TURSO_AUTH_TOKEN:
-    print(f"[Turso] Connecting to {DATABASE_URL}")
-else:
-    print("[Turso] Using local SQLite database")
-
 def get_db_connection():
-    """Получить подключение к базе данных Turso"""
-    if DATABASE_URL and TURSO_AUTH_TOKEN:
-        return libsql_client.create_client(
-            url=DATABASE_URL,
-            auth_token=TURSO_AUTH_TOKEN
-        )
-    else:
-        # Локальный SQLite для разработки
-        import sqlite3
-        return sqlite3.connect('messenger.db', check_same_thread=False)
+    """Получить подключение к базе данных"""
+    # Используем SQLite для разработки и production
+    return sqlite3.connect('messenger.db', check_same_thread=False)
 
 # Cloudinary настройка (для хостинга изображений)
 CLOUDINARY_CONFIGURED = False
 try:
-    import cloudinary
-    import cloudinary.uploader
-    cloudinary.config(
+    import cloudinary  # type: ignore
+    import cloudinary.uploader  # type: ignore
+    cloudinary.config(  # type: ignore
         cloud_name=os.environ.get('CLOUDINARY_CLOUD_NAME'),
         api_key=os.environ.get('CLOUDINARY_API_KEY'),
         api_secret=os.environ.get('CLOUDINARY_API_SECRET')
     )
     CLOUDINARY_CONFIGURED = True
     print("[Cloudinary] Configured successfully")
+except ImportError:
+    print("[Cloudinary] Not installed (pip install cloudinary)")
 except Exception as e:
     print(f"[Cloudinary] Not configured: {e}")
 
@@ -177,15 +163,15 @@ def init_tables():
         tables = [row[0] for row in result.fetchall()]
         print(f"Созданы таблицы: {', '.join(tables)}")
         conn.close()
-            
-            if len(tables) < 3:
-                raise Exception(f"Не все таблицы созданы! Найдено: {len(tables)}, ожидается: 3")
-                
+
+        if len(tables) < 3:
+            raise Exception(f"Не все таблицы созданы! Найдено: {len(tables)}, ожидается: 3")
+
         print("=== БД готова к работе ===")
         return True
     except Exception as e:
         print(f"❌ ОШИБКА создания таблиц: {e}")
-        print(f"DATABASE_URL: {DATABASE_URL or 'SQLite (messenger.db)'}")
+        print(f"DATABASE_URL: SQLite (messenger.db)")
         return False
 
 # Инициализируем таблицы при загрузке
@@ -195,24 +181,11 @@ if not init_tables():
 else:
     _tables_initialized = True
 
-def ensure_tables():
-    """Гарантировать что таблицы существуют (для serverless/Supabase)"""
-    global _tables_initialized
-    if _tables_initialized:
-        return True
-    try:
-        # Проверяем подключение
-        with engine.connect() as conn:
-            pass
-        # Создаём таблицы
-        Base.metadata.create_all(engine)
-        _tables_initialized = True
-        print("[DB] Tables ensured for serverless")
-        return True
-    except Exception as e:
-        print(f"[DB] Error ensuring tables: {e}")
-        # Не блокируем запрос - возможно таблицы уже существуют
-        return False
+@app.before_request
+def before_request():
+    """Гарантировать что таблицы существуют перед каждым запросом (для serverless)"""
+    if not _tables_initialized:
+        init_tables()
 
 def create_notification(db, user_id, message, sender_id=None, notif_type='message'):
     """Создаёт уведомление для пользователя"""
@@ -253,11 +226,6 @@ def get_current_user():
         db.close()
         print(f"Error getting current user: {e}")
         return None
-
-@app.before_request
-def before_request():
-    """Гарантировать что таблицы существуют перед каждым запросом (для serverless)"""
-    ensure_tables()
 
 def generate_avatar_color():
     import random
@@ -432,14 +400,22 @@ def api_users():
             is_online = False
             last_seen_str = None
             if u['last_seen']:
-                time_diff = utc_now() - u['last_seen']
-                is_online = time_diff.total_seconds() < 10
-                last_seen_msk = to_msk(u['last_seen'])
-                last_seen_str = last_seen_msk.strftime('%d.%m %H:%M')
+                # Парсим last_seen если это строка
+                last_seen_dt = u['last_seen']
+                if isinstance(last_seen_dt, str):
+                    try:
+                        last_seen_dt = datetime.fromisoformat(last_seen_dt.replace(' ', 'T'))
+                    except:
+                        last_seen_dt = None
+                if last_seen_dt:
+                    time_diff = utc_now() - last_seen_dt
+                    is_online = time_diff.total_seconds() < 10
+                    last_seen_msk = to_msk(last_seen_dt)
+                    last_seen_str = last_seen_msk.strftime('%d.%m %H:%M') if last_seen_msk else ''
 
             # Считаем непрочитанные сообщения от этого пользователя
             cursor = db.execute("""
-                SELECT COUNT(*) FROM messages 
+                SELECT COUNT(*) FROM messages
                 WHERE sender_id = ? AND recipient_id = ? AND status != 'read'
             """, (u['id'], user['id']))
             unread_count = cursor.fetchone()[0]
@@ -500,7 +476,7 @@ def api_messages(recipient_id=None):
                 'id': m['id'],
                 'sender': sender,
                 'content': m['content'],
-                'created_at': to_msk(m['created_at']).strftime('%H:%M') if m['created_at'] else '',
+                'created_at': to_msk(m['created_at']).strftime('%H:%M') if m['created_at'] and to_msk(m['created_at']) else '',
                 'is_mine': m['sender_id'] == user['id'],
                 'file_type': m['file_type'],
                 'status': msg_status
@@ -538,8 +514,8 @@ def api_send():
                 create_notification(
                     db=db,
                     user_id=recipient_id,
-                    message=f"Новое сообщение от {user.username}: {content[:50]}{'...' if len(content) > 50 else ''}",
-                    sender_id=user.id,
+                    message=f"Новое сообщение от {user['username']}: {content[:50]}{'...' if len(content) > 50 else ''}",
+                    sender_id=user['id'],
                     notif_type='message'
                 )
 
@@ -554,12 +530,8 @@ def api_send():
 @app.route('/api/send-file', methods=['POST'])
 def api_send_file():
     """Отправка файла (изображения или другого файла)"""
-    # Гарантируем что таблицы существуют
-    ensure_tables()
-    
-    print(f"[send-file] DATABASE_URL present: {bool(DATABASE_URL)}")
     print(f"[send-file] Tables initialized: {_tables_initialized}")
-    
+
     user = get_current_user()
     if not user:
         print(f"[send-file] Not authorized")
@@ -569,7 +541,7 @@ def api_send_file():
     file_data = request.form.get('file_data')  # Base64 данные
     file_type = request.form.get('file_type')  # 'image' или 'file'
 
-    print(f"[send-file] User: {user.id}, file_type: {file_type}, recipient: {recipient_id}")
+    print(f"[send-file] User: {user['id']}, file_type: {file_type}, recipient: {recipient_id}")
     print(f"[send-file] File data length: {len(file_data) if file_data else 0}")
 
     if not file_data:
@@ -588,48 +560,33 @@ def api_send_file():
             print(f"[send-file] Invalid data URL format")
             return jsonify({'success': False, 'message': 'Invalid file format'})
 
-        # Пробуем со статусом
-        try:
-            msg = Message(
-                sender_id=user.id,
-                recipient_id=recipient_id if recipient_id else None,
-                content=file_data,
-                file_type=file_type,
-                status='sent'
-            )
-            db.add(msg)
-            db.commit()
-            print(f"[send-file] Message saved with id: {msg.id}")
-        except:
-            # Если колонки status нет - без статуса
-            db.rollback()
-            msg = Message(
-                sender_id=user.id,
-                recipient_id=recipient_id if recipient_id else None,
-                content=file_data,
-                file_type=file_type
-            )
-            db.add(msg)
-            db.commit()
-            print(f"[send-file] Message saved (no status) with id: {msg.id}")
+        # Вставляем сообщение
+        cursor = db.execute("""
+            INSERT INTO messages (sender_id, recipient_id, content, file_type, status, created_at)
+            VALUES (?, ?, ?, ?, 'sent', CURRENT_TIMESTAMP)
+        """, (user['id'], recipient_id if recipient_id else None, file_data, file_type))
+        db.commit()
+        msg_id = cursor.lastrowid
+        print(f"[send-file] Message saved with id: {msg_id}")
 
         # Отправляем уведомление получателю
         if recipient_id:
             try:
-                recipient = db.query(User).filter_by(id=int(recipient_id)).first()
-                if recipient:
+                cursor = db.execute("SELECT username FROM users WHERE id = ?", (int(recipient_id),))
+                recipient_row = cursor.fetchone()
+                if recipient_row:
                     create_notification(
                         db=db,
                         user_id=int(recipient_id),
-                        message=f"Новое фото от {user.username}",
-                        sender_id=user.id,
+                        message=f"Новое фото от {user['username']}",
+                        sender_id=user['id'],
                         notif_type='message'
                     )
                     print(f"[send-file] Notification sent to user {recipient_id}")
             except Exception as notif_err:
                 print(f"[send-file] Error sending notification: {notif_err}")
 
-        return jsonify({'success': True, 'id': msg.id, 'status': 'sent'})
+        return jsonify({'success': True, 'id': msg_id, 'status': 'sent'})
     except Exception as e:
         db.rollback()
         print(f"[send-file] Error: {e}")
@@ -642,18 +599,14 @@ def api_send_file():
 @app.route('/api/logout')
 def api_logout():
     """Выход пользователя из аккаунта"""
-    from datetime import datetime
-
     user_id = request.cookies.get('user_id')
     if user_id:
         # Обновляем last_seen при выходе
         db = get_db()
         try:
-            user = db.query(User).filter_by(id=int(user_id)).first()
-            if user:
-                user.last_seen = utc_now()
-                db.commit()
-                print(f"[Logout] User {user_id} logged out, last_seen updated")
+            db.execute("UPDATE users SET last_seen = CURRENT_TIMESTAMP WHERE id = ?", (int(user_id),))
+            db.commit()
+            print(f"[Logout] User {user_id} logged out, last_seen updated")
         except Exception as e:
             db.rollback()
             print(f"[Logout] Error updating last_seen: {e}")
@@ -678,7 +631,7 @@ def api_clear_messages():
         return jsonify({'success': False, 'message': 'Not authorized'})
     db = get_db()
     try:
-        db.query(Message).filter(Message.sender_id == user.id).delete()
+        db.execute("DELETE FROM messages WHERE sender_id = ?", (user['id'],))
         db.commit()
         return jsonify({'success': True})
     except Exception as e:
@@ -696,15 +649,13 @@ def api_delete_account():
     db = get_db()
     try:
         # Удаляем все сообщения пользователя (как отправленные, так и полученные)
-        db.query(Message).filter(
-            or_(Message.sender_id == user.id, Message.recipient_id == user.id)
-        ).delete()
+        db.execute("DELETE FROM messages WHERE sender_id = ? OR recipient_id = ?", (user['id'], user['id']))
         # Удаляем пользователя
-        db.query(User).filter(User.id == user.id).delete()
+        db.execute("DELETE FROM users WHERE id = ?", (user['id'],))
         db.commit()
         resp = make_response(jsonify({'success': True}))
         resp.delete_cookie('user_id')
-        resp.delete_cookie('username')  # На всякий 
+        resp.delete_cookie('username')  # На всякий
         return resp
     except Exception as e:
         db.rollback()
@@ -720,17 +671,29 @@ def api_notifications():
         return jsonify([])
     db = get_db()
     try:
-        notifications = db.query(Notification).filter_by(user_id=user.id).order_by(Notification.created_at.desc()).limit(50).all()
+        cursor = db.execute("""
+            SELECT id, sender_id, message, type, is_read, created_at
+            FROM notifications
+            WHERE user_id = ?
+            ORDER BY created_at DESC
+            LIMIT 50
+        """, (user['id'],))
+        notifications = cursor.fetchall()
         result = []
         for n in notifications:
-            sender = db.query(User).filter_by(id=n.sender_id).first() if n.sender_id else None
+            sender = None
+            if n[1]:  # sender_id
+                sender_cursor = db.execute("SELECT id, username, avatar_color FROM users WHERE id = ?", (n[1],))
+                sender_row = sender_cursor.fetchone()
+                if sender_row:
+                    sender = {'id': sender_row[0], 'username': sender_row[1], 'avatar_color': sender_row[2]}
             result.append({
-                'id': n.id,
-                'message': n.message,
-                'type': n.type,
-                'is_read': bool(n.is_read),
-                'created_at': to_msk(n.created_at).strftime('%H:%M'),
-                'sender': {'id': sender.id, 'username': sender.username, 'avatar_color': sender.avatar_color} if sender else None
+                'id': n[0],
+                'message': n[2],
+                'type': n[3],
+                'is_read': bool(n[4]),
+                'created_at': to_msk(n[5]).strftime('%H:%M') if n[5] and to_msk(n[5]) else '',
+                'sender': sender
             })
         return jsonify(result)
     except Exception as e:
@@ -747,7 +710,8 @@ def api_notifications_unread():
         return jsonify({'count': 0})
     db = get_db()
     try:
-        count = db.query(Notification).filter_by(user_id=user.id, is_read=0).count()
+        cursor = db.execute("SELECT COUNT(*) FROM notifications WHERE user_id = ? AND is_read = 0", (user['id'],))
+        count = cursor.fetchone()[0]
         return jsonify({'count': count})
     finally:
         db.close()
@@ -760,7 +724,7 @@ def api_notifications_mark_read():
         return jsonify({'success': False, 'message': 'Not authorized'})
     db = get_db()
     try:
-        db.query(Notification).filter_by(user_id=user.id, is_read=0).update({'is_read': 1})
+        db.execute("UPDATE notifications SET is_read = 1 WHERE user_id = ? AND is_read = 0", (user['id'],))
         db.commit()
         return jsonify({'success': True})
     except Exception as e:
@@ -777,10 +741,11 @@ def api_notifications_mark_single_read(notification_id):
         return jsonify({'success': False, 'message': 'Not authorized'})
     db = get_db()
     try:
-        notification = db.query(Notification).filter_by(id=notification_id, user_id=user.id).first()
+        cursor = db.execute("SELECT id FROM notifications WHERE id = ? AND user_id = ?", (notification_id, user['id']))
+        notification = cursor.fetchone()
         if not notification:
             return jsonify({'success': False, 'message': 'Notification not found'})
-        notification.is_read = 1
+        db.execute("UPDATE notifications SET is_read = 1 WHERE id = ?", (notification_id,))
         db.commit()
         return jsonify({'success': True})
     except Exception as e:
@@ -797,7 +762,7 @@ def api_change_username():
         print(f"❌ change-username: пользователь не найден (cookie user_id={request.cookies.get('user_id')})")
         return jsonify({'success': False, 'message': 'Not authorized'})
 
-    print(f"✅ change-username: текущий пользователь id={user.id}, username={user.username}")
+    print(f"✅ change-username: текущий пользователь id={user['id']}, username={user['username']}")
 
     data = request.json
     new_username = data.get('username', '').strip()
@@ -813,22 +778,23 @@ def api_change_username():
     db = get_db()
     try:
         # Проверяем, не занято ли имя другим пользователем
-        existing = db.query(User).filter_by(username=new_username).first()
-        if existing and existing.id != user.id:
-            print(f"⚠️ change-username: имя '{new_username}' уже занято пользователем id={existing.id}")
+        cursor = db.execute("SELECT id FROM users WHERE username = ?", (new_username,))
+        existing = cursor.fetchone()
+        if existing and existing[0] != user['id']:
+            print(f"⚠️ change-username: имя '{new_username}' уже занято пользователем id={existing[0]}")
             db.close()
             return jsonify({'success': False, 'message': 'Это имя уже занято'})
 
         # Обновляем имя в базе данных (id остаётся прежним)
-        old_username = user.username
-        user.username = new_username
+        old_username = user['username']
+        db.execute("UPDATE users SET username = ? WHERE id = ?", (new_username, user['id']))
         db.commit()
 
-        print(f"✅ change-username: успешно! id={user.id}, старый ник='{old_username}', новый ник='{new_username}'")
+        print(f"✅ change-username: успешно! id={user['id']}, старый ник='{old_username}', новый ник='{new_username}'")
         db.close()
 
         # Возвращаем новый username и удаляем старый cookie
-        resp = make_response(jsonify({'success': True, 'username': new_username, 'id': user.id}))
+        resp = make_response(jsonify({'success': True, 'username': new_username, 'id': user['id']}))
         resp.delete_cookie('username')
         return resp
     except Exception as e:
@@ -847,40 +813,43 @@ def api_last_messages():
     db = get_db()
     try:
         # Получаем все сообщения между текущим пользователем и другими
-        msgs = db.query(Message).filter(
-            or_(
-                and_(Message.sender_id == user.id, Message.recipient_id.isnot(None)),
-                and_(Message.recipient_id == user.id, Message.sender_id.isnot(None))
-            )
-        ).order_by(Message.created_at.desc()).all()
+        cursor = db.execute("""
+            SELECT id, sender_id, recipient_id, content, created_at, file_type, status
+            FROM messages
+            WHERE (sender_id = ? AND recipient_id IS NOT NULL)
+               OR (recipient_id = ? AND sender_id IS NOT NULL)
+            ORDER BY created_at DESC
+        """, (user['id'], user['id']))
+        msgs = cursor.fetchall()
 
         # Группируем по собеседнику и берём последнее сообщение
         last_messages = {}
         for msg in msgs:
-            partner_id = msg.recipient_id if msg.sender_id == user.id else msg.sender_id
+            partner_id = msg[2] if msg[1] == user['id'] else msg[1]  # recipient_id или sender_id
             if partner_id not in last_messages:
                 last_messages[partner_id] = msg
 
         result = []
         for partner_id, msg in last_messages.items():
-            sender = db.query(User).filter_by(id=msg.sender_id).first()
-            
+            sender_cursor = db.execute("SELECT username FROM users WHERE id = ?", (msg[1],))
+            sender_row = sender_cursor.fetchone()
+
             # Считаем непрочитанные сообщения от этого партнера
-            unread_count = db.query(Message).filter(
-                Message.sender_id == partner_id,
-                Message.recipient_id == user.id,
-                Message.status != 'read'
-            ).count()
-            
+            cursor = db.execute("""
+                SELECT COUNT(*) FROM messages
+                WHERE sender_id = ? AND recipient_id = ? AND status != 'read'
+            """, (partner_id, user['id']))
+            unread_count = cursor.fetchone()[0]
+
             result.append({
-                'id': msg.id,
-                'sender': sender.username if sender else 'Unknown',
-                'sender_id': msg.sender_id,
-                'recipient_id': msg.recipient_id,
-                'content': msg.content,
-                'created_at': to_msk(msg.created_at).strftime('%H:%M'),
-                'file_type': msg.file_type,
-                'status': getattr(msg, 'status', 'sent') or 'sent',
+                'id': msg[0],
+                'sender': sender_row[0] if sender_row else 'Unknown',
+                'sender_id': msg[1],
+                'recipient_id': msg[2],
+                'content': msg[3],
+                'created_at': to_msk(msg[4]).strftime('%H:%M') if msg[4] and to_msk(msg[4]) else '',
+                'file_type': msg[5],
+                'status': msg[6] if msg[6] else 'sent',
                 'unread_count': unread_count
             })
 
@@ -894,19 +863,15 @@ def api_last_messages():
 @app.route('/api/heartbeat', methods=['POST'])
 def api_heartbeat():
     """Heartbeat для проверки активности пользователя"""
-    from datetime import datetime
-    
     user_id = request.cookies.get('user_id')
     if not user_id:
         return jsonify({'success': False})
-    
-    # Обновляем last_seen в той же сессии
+
+    # Обновляем last_seen
     db = get_db()
     try:
-        user = db.query(User).filter_by(id=int(user_id)).first()
-        if user:
-            user.last_seen = utc_now()
-            db.commit()
+        db.execute("UPDATE users SET last_seen = CURRENT_TIMESTAMP WHERE id = ?", (int(user_id),))
+        db.commit()
         return jsonify({'success': True, 'user_id': user_id})
     except Exception as e:
         db.rollback()
@@ -921,21 +886,20 @@ def api_mark_read():
     user = get_current_user()
     if not user:
         return jsonify({'success': False})
-    
+
     data = request.json
     sender_id = data.get('sender_id')
-    
+
     if not sender_id:
         return jsonify({'success': False, 'message': 'No sender_id'})
-    
+
     db = get_db()
     try:
         # Помечаем сообщения как прочитанные (обновляем статус)
-        db.query(Message).filter(
-            Message.sender_id == sender_id,
-            Message.recipient_id == user.id,
-            Message.status != 'read'
-        ).update({'status': 'read'}, synchronize_session=False)
+        db.execute("""
+            UPDATE messages SET status = 'read'
+            WHERE sender_id = ? AND recipient_id = ? AND status != 'read'
+        """, (sender_id, user['id']))
         db.commit()
         return jsonify({'success': True})
     except Exception as e:
@@ -950,13 +914,14 @@ def api_username_check():
     """Проверка доступности username"""
     data = request.json
     username = data.get('username', '').strip()
-    
+
     if not username:
         return jsonify({'available': False, 'message': 'Введите username'})
-    
+
     db = get_db()
     try:
-        existing = db.query(User).filter_by(username=username).first()
+        cursor = db.execute("SELECT id FROM users WHERE username = ?", (username,))
+        existing = cursor.fetchone()
         if existing:
             return jsonify({'available': False, 'message': 'Это имя уже занято'})
         return jsonify({'available': True})
@@ -980,16 +945,15 @@ def api_username_set():
     if jt_username.startswith('@'):
         jt_username = jt_username[1:]
 
-    # Создаём сессию СРАЗУ и используем её для всего
     db = get_db()
     try:
-
-        user = db.query(User).filter_by(id=int(user_id)).first()
-        if not user:
+        cursor = db.execute("SELECT id FROM users WHERE id = ?", (int(user_id),))
+        user_row = cursor.fetchone()
+        if not user_row:
             return jsonify({'success': False, 'message': 'User not found'})
 
         if not jt_username:
-            user.jt_username = None
+            db.execute("UPDATE users SET jt_username = NULL WHERE id = ?", (int(user_id),))
             db.commit()
             return jsonify({'success': True, 'jt_username': None})
 
@@ -1004,11 +968,12 @@ def api_username_set():
         if jt_username.endswith('.') or jt_username.endswith('_'):
             return jsonify({'success': False, 'message': 'Username не может заканчиваться на точку или подчёркивание'})
 
-        existing = db.query(User).filter_by(jt_username=jt_username).first()
-        if existing and existing.id != user.id:
+        cursor = db.execute("SELECT id FROM users WHERE jt_username = ? AND id != ?", (jt_username, int(user_id)))
+        existing = cursor.fetchone()
+        if existing:
             return jsonify({'success': False, 'message': 'Этот @username уже занят'})
 
-        user.jt_username = jt_username
+        db.execute("UPDATE users SET jt_username = ? WHERE id = ?", (jt_username, int(user_id)))
         db.commit()
         return jsonify({'success': True, 'jt_username': jt_username})
     except Exception as e:
@@ -1031,16 +996,16 @@ def api_upload_avatar():
         print(f"[Avatar] User not authorized (user_id={request.cookies.get('user_id')})")
         return jsonify({'success': False, 'message': 'Not authorized'})
 
-    # Создаём сессию СРАЗУ и используем её для всего
     db = get_db()
     try:
-        # Получаем пользователя в рамках этой сессии
-        user = db.query(User).filter_by(id=int(user_id)).first()
-        if not user:
+        # Получаем пользователя
+        cursor = db.execute("SELECT id, username, avatar_url FROM users WHERE id = ?", (int(user_id),))
+        user_row = cursor.fetchone()
+        if not user_row:
             print(f"[Avatar] User not found: id={user_id}")
             return jsonify({'success': False, 'message': 'User not found'})
 
-        print(f"[Avatar] Upload request from user {user.id} ({user.username})")
+        print(f"[Avatar] Upload request from user {user_row[0]} ({user_row[1]})")
 
         if 'avatar' not in request.files:
             print(f"[Avatar] No file in request")
@@ -1053,8 +1018,10 @@ def api_upload_avatar():
 
         import io
         import uuid
-        ext = os.path.splitext(file.filename)[1].lower()
-        print(f"[Avatar] File: {file.filename}, ext: {ext}")
+        # Исправление для splitext - проверяем на None
+        filename = file.filename if file.filename else ''
+        ext = os.path.splitext(filename)[1].lower() if filename else ''
+        print(f"[Avatar] File: {filename}, ext: {ext}")
 
         if ext not in ['.jpg', '.jpeg', '.png', '.gif', '.webp']:
             return jsonify({'success': False, 'message': 'Неверный формат. Разрешены: jpg, png, gif, webp'})
@@ -1068,24 +1035,24 @@ def api_upload_avatar():
         if CLOUDINARY_CONFIGURED:
             print(f"[Avatar] Uploading to Cloudinary...")
             try:
-                import cloudinary.uploader
-                upload_result = cloudinary.uploader.upload(
+                import cloudinary.uploader  # type: ignore
+                upload_result = cloudinary.uploader.upload(  # type: ignore
                     file_io,
                     folder='avatars',
-                    public_id=f"user_{user.id}_{uuid.uuid4().hex[:8]}",
+                    public_id=f"user_{user_row[0]}_{uuid.uuid4().hex[:8]}",
                     resource_type='image'
                 )
                 avatar_url = upload_result['secure_url']
-                
+
                 avatar_url = upload_result['secure_url'].replace('/upload/', '/upload/w_200,h_200,c_fill,g_face/', 1)
                 print(f"[Avatar] Uploaded to Cloudinary: {avatar_url}")
             except Exception as e:
                 print(f"[Avatar] Cloudinary upload error: {e}")
                 return jsonify({'success': False, 'message': f'Cloudinary error: {str(e)}'})
         else:
-            # )Локально) сохраняем в папку
+            # Локально сохраняем в папку
             print(f"[Avatar] Saving locally...")
-            filename = f"avatar_{user.id}_{uuid.uuid4().hex[:8]}{ext}"
+            filename = f"avatar_{user_row[0]}_{uuid.uuid4().hex[:8]}{ext}"
 
             # В serverless-среде используем /tmp, иначе - локальную папку
             if os.environ.get('VERCEL') or os.environ.get('AWS_LAMBDA_FUNCTION_NAME'):
@@ -1115,10 +1082,10 @@ def api_upload_avatar():
 
             avatar_url = f"/avatars/{filename}"
 
-        # Сохраняем путь в БД (в той же сессии!!!!!!!!!!!!!!!!!!!!!)
-        print(f"[Avatar] BEFORE UPDATE: user_id={user.id}, current avatar_url={user.avatar_url}")
-        print(f"[Avatar] Updating database: user_id={user.id}, new avatar_url={avatar_url}")
-        user.avatar_url = avatar_url
+        # Сохраняем путь в БД
+        print(f"[Avatar] BEFORE UPDATE: user_id={user_row[0]}, current avatar_url={user_row[2]}")
+        print(f"[Avatar] Updating database: user_id={user_row[0]}, new avatar_url={avatar_url}")
+        db.execute("UPDATE users SET avatar_url = ? WHERE id = ?", (avatar_url, int(user_id)))
         db.commit()
         print(f"[Avatar] Success! Avatar URL: {avatar_url}")
         return jsonify({'success': True, 'avatar_url': avatar_url})
