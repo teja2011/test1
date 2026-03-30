@@ -2855,7 +2855,7 @@
                     alert('Ник изменён на: ' + result.username);
                     location.reload();
                 } else {
-                    alert('Ошибка: ' + (result.message || '��еизвестная ошибка'));
+                    alert('Ошибка: ' + (result.message || 'Неизвестная ошибка'));
                 }
             })
             .catch(function(err) {
@@ -2949,38 +2949,13 @@
         }
 
         if ('serviceWorker' in navigator) {
-            // Сначала unregister старых Service Workers
-            navigator.serviceWorker.getRegistrations().then(function(registrations) {
-                for (var registration of registrations) {
-                    registration.unregister();
-                    console.log('[PWA] Старый SW удален:', registration.scope);
-                }
-                // Затем регистрируем новый
-                return navigator.serviceWorker.register('/sw.js');
-            })
-            .then(function(reg) {
-                console.log('[PWA] SW зарегистрирован:', reg.scope);
-                reg.addEventListener('updatefound', function() {
-                    var newWorker = reg.installing;
-                    newWorker.addEventListener('statechange', function() {
-                        if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                            showUpdateNotification();
-                        }
-                    });
+            navigator.serviceWorker.register('/sw.js')
+                .then(function(reg) {
+                    console.log('[PWA] SW зарегистрирован:', reg.scope);
+                })
+                .catch(function(err) {
+                    console.error('[PWA] Ошибка регистрации SW:', err);
                 });
-            })
-            .catch(function(err) {
-                console.error('[PWA] Ошибка регистрации SW:', err);
-            });
-        }
-
-        function showUpdateNotification() {
-            var notification = document.createElement('div');
-            notification.style.cssText = 'position:fixed;bottom:20px;right:20px;background:var(--primary,#6366f1);color:white;padding:16px 24px;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.3);z-index:10000;cursor:pointer;animation:slideIn 0.3s ease;';
-            notification.innerHTML = '🔄 Доступна новая версия! Нажмите для обновления';
-            notification.onclick = function() { location.reload(); };
-            document.body.appendChild(notification);
-            setTimeout(function() { notification.remove(); }, 10000);
         }
 
         init();
