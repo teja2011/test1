@@ -17,16 +17,16 @@
     <link rel="manifest" href="/manifest.json">
     <style>
         :root {
-            --bg: light-dark(#f8fafc, #0f172a);
-            --surface: light-dark(#ffffff, #1e293b);
-            --text: light-dark(#1e293b, #ffffff);
-            --text-secondary: light-dark(#64748b, #94a3b8);
-            --border: light-dark(#e2e8f0, #334155);
-            --primary: light-dark(#6366f1, #6366f1);
-            --error: light-dark(#ef4444, #ef4444);
-            --success: light-dark(#22c55e, #22c55e);
+            --bg: light-dark(#1e293b, #0f172a);
+            --surface: light-dark(#334155, #1e293b);
+            --text: light-dark(#f1f5f9, #ffffff);
+            --text-secondary: light-dark(#94a3b8, #94a3b8);
+            --border: light-dark(#475569, #334155);
+            --primary: light-dark(#818cf8, #6366f1);
+            --error: light-dark(#f87171, #ef4444);
+            --success: light-dark(#4ade80, #22c55e);
             --message-me: light-dark(#6366f1, #4f46e5);
-            --message-other: light-dark(#f1f5f9, #3f3f5f);
+            --message-other: light-dark(#475569, #3f3f5f);
         }
         .theme-toggle {
             position: fixed;
@@ -42,11 +42,10 @@
             align-items: center;
             justify-content: center;
             font-size: 24px;
-            z-index: 100000;
+            z-index: 9999;
             transition: transform 0.2s, background 0.3s;
             -webkit-tap-highlight-color: transparent;
             padding: 0;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
         }
         .theme-toggle svg {
             width: 24px;
@@ -1849,39 +1848,21 @@
             var themeToggle = document.getElementById('themeToggle');
             var htmlElement = document.documentElement;
             var isDarkTheme = true;
-            
-            // Проверяем сохраненную тему
-            var savedTheme = localStorage.getItem('theme');
-            if (savedTheme === 'light') {
-                isDarkTheme = false;
-                htmlElement.style.colorScheme = 'light';
-            }
-            
-            if (themeToggle) {
-                var moonIcon = themeToggle.querySelector('.moon-icon');
-                var sunIcon = themeToggle.querySelector('.sun-icon');
-                
-                // Применяем сохраненную тему к иконкам
-                if (!isDarkTheme) {
+            var moonIcon = themeToggle.querySelector('.moon-icon');
+            var sunIcon = themeToggle.querySelector('.sun-icon');
+
+            themeToggle.addEventListener('click', function() {
+                isDarkTheme = !isDarkTheme;
+                if (isDarkTheme) {
+                    htmlElement.style.colorScheme = 'dark';
+                    moonIcon.style.display = 'block';
+                    sunIcon.style.display = 'none';
+                } else {
+                    htmlElement.style.colorScheme = 'light';
                     moonIcon.style.display = 'none';
                     sunIcon.style.display = 'block';
                 }
-
-                themeToggle.addEventListener('click', function() {
-                    isDarkTheme = !isDarkTheme;
-                    if (isDarkTheme) {
-                        htmlElement.style.colorScheme = 'dark';
-                        moonIcon.style.display = 'block';
-                        sunIcon.style.display = 'none';
-                        localStorage.setItem('theme', 'dark');
-                    } else {
-                        htmlElement.style.colorScheme = 'light';
-                        moonIcon.style.display = 'none';
-                        sunIcon.style.display = 'block';
-                        localStorage.setItem('theme', 'light');
-                    }
-                });
-            }
+            });
         });
 
         function getStatusIcon(status) {
@@ -2855,7 +2836,7 @@
                     alert('Ник изменён на: ' + result.username);
                     location.reload();
                 } else {
-                    alert('Ошибка: ' + (result.message || 'Неизвестная ошибка'));
+                    alert('Ошибка: ' + (result.message || '��еизвестная ошибка'));
                 }
             })
             .catch(function(err) {
@@ -2952,10 +2933,27 @@
             navigator.serviceWorker.register('/sw.js')
                 .then(function(reg) {
                     console.log('[PWA] SW зарегистрирован:', reg.scope);
+                    reg.addEventListener('updatefound', function() {
+                        var newWorker = reg.installing;
+                        newWorker.addEventListener('statechange', function() {
+                            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                showUpdateNotification();
+                            }
+                        });
+                    });
                 })
                 .catch(function(err) {
                     console.error('[PWA] Ошибка регистрации SW:', err);
                 });
+        }
+
+        function showUpdateNotification() {
+            var notification = document.createElement('div');
+            notification.style.cssText = 'position:fixed;bottom:20px;right:20px;background:var(--primary,#6366f1);color:white;padding:16px 24px;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.3);z-index:10000;cursor:pointer;animation:slideIn 0.3s ease;';
+            notification.innerHTML = '🔄 Доступна новая версия! Нажмите для обновления';
+            notification.onclick = function() { location.reload(); };
+            document.body.appendChild(notification);
+            setTimeout(function() { notification.remove(); }, 10000);
         }
 
         init();

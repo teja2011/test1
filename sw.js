@@ -1,8 +1,8 @@
-// Service Worker для PWA - кэширование, offline
-const CACHE_NAME = 'jetesk-v3';
-const STATIC_CACHE = 'jetesk-static-v3';
-const DYNAMIC_CACHE = 'jetesk-dynamic-v3';
-const API_CACHE = 'jetesk-api-v3';
+// Service Worker для PWA - кэширование, offline, push
+const CACHE_NAME = 'jetesk-v2';
+const STATIC_CACHE = 'jetesk-static-v2';
+const DYNAMIC_CACHE = 'jetesk-dynamic-v2';
+const API_CACHE = 'jetesk-api-v2';
 
 const STATIC_ASSETS = [
     '/',
@@ -21,6 +21,7 @@ self.addEventListener('install', (event) => {
         caches.open(STATIC_CACHE)
             .then((cache) => {
                 console.log('[SW] Кэширование статики');
+                // Кэшируем только основные файлы, игнорируя ошибки
                 return Promise.all(
                     STATIC_ASSETS.map(url => {
                         return fetch(url)
@@ -59,6 +60,98 @@ self.addEventListener('activate', (event) => {
     );
 });
 
+// Обработка push-событий
+self.addEventListener('push', (event) => {
+    console.log('[SW] Push получен:', event);
+
+    let data = {};
+    
+    if (event.data) {
+        try {
+            data = event.data.json();
+        } catch (e) {
+            console.log('[SW] Ошибка парсинга данных push:', e);
+            data = {
+                title: 'Jetesk',
+                body: 'Новое уведомление',
+                icon: '/Jetesk.png',
+                badge: '/Jetesk.png'
+            };
+        }
+    }
+
+    const title = data.title || 'Jetesk Мессенджер';
+    const options = {
+        body: data.body || 'У вас новое сообщение',
+        icon: data.icon || '/Jetesk.png',
+        badge: data.badge || '/Jetesk.png',
+        vibrate: data.vibrate || [200, 100, 200],
+        data: data.data || {},
+        requireInteraction: data.requireInteraction || false,
+        actions: [
+            {
+                action: 'open',
+                title: 'Открыть',
+                icon: '/Jetesk.png'
+            },
+            {
+                action: 'close',
+                title: 'Закрыть',
+                icon: '/Jetesk.png'
+            }
+        ],
+        tag: data.data?.message_id ? `message-${data.data.message_id}` : 'jetesk-notification',
+        renotify: true
+    };
+
+    event.waitUntil(
+        self.registration.showNotification(title, options)
+    );
+});
+
+// Обработка клика по уведомлению
+self.addEventListener('notificationclick', (event) => {
+    console.log('[SW] Клик по уведомлению:', event);
+    
+    event.notification.close();
+
+    if (event.action === 'close') {
+        return;
+    }
+
+    // Открываем приложение или фокусируем существующую вкладку
+    event.waitUntil(
+        clients.matchAll({ type: 'window', includeUncontrolled: true })
+            .then((windowClients) => {
+                // Ищем вкладку с нашим приложением
+                const jeteskWindow = windowClients.find(
+                    (client) => client.url.includes('/chat') || client.url === '/'
+                );
+
+                if (jeteskWindow && jeteskWindow.focus) {
+                    return jeteskWindow.focus();
+                }
+
+                // Если нет открытой вкладки, открываем новую
+                if (clients.openWindow) {
+                    return clients.openWindow('/chat');
+                }
+            })
+    );
+});
+
+// Обработка фоновой синхронизации (если поддерживается)
+self.addEventListener('sync', (event) => {
+    console.log('[SW] Sync событие:', event.tag);
+    
+    if (event.tag === 'send-message') {
+        event.waitUntil(
+            // Логика отправки сообщений при восстановлении соединения
+            Promise.resolve()
+        );
+    }
+});
+
 // Перехват запросов - умное кэширование
 self.addEventListener('fetch', (event) => {
     const { request } = event;
@@ -69,8 +162,8 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    // Пропускаем ВСЕ внешние запросы (Google Tag Manager, аналитика, и т.д.)
-    if (url.origin !== self.location.origin) {
+    // Пропускаем внешние запросы (кроме Google Analytics)
+    if (url.origin !== self.location.origin && !url.hostname.includes('googletagmanager')) {
         return;
     }
 
@@ -79,14 +172,15 @@ self.addEventListener('fetch', (event) => {
         event.respondWith(
             fetch(request)
                 .then((response) => {
+                    // Клонируем ответ для кэширования
                     const responseClone = response.clone();
                     caches.open(API_CACHE).then((cache) => {
                         cache.put(request, responseClone);
                     });
                     return response;
                 })
-                .catch((err) => {
-                    console.log('[SW] API offline:', url.pathname, err);
+                .catch(() => {
+                    // Offline - возвращаем из кэша
                     return caches.match(request).then((cached) => {
                         return cached || new Response(JSON.stringify({error: 'offline'}), {
                             status: 200,
@@ -103,16 +197,23 @@ self.addEventListener('fetch', (event) => {
         request.destination === 'script' ||
         request.destination === 'style' ||
         request.destination === 'font') {
+        // Пропускаем внешние скрипты (Google Tag Manager и др.)
+        if (request.url.includes('googletagmanager') || request.url.includes('google-analytics')) {
+            return;
+        }
         
         event.respondWith(
             caches.match(request)
                 .then((cached) => {
                     if (cached) {
+                        // Проверяем возраст кэша
                         const cachedTime = new Date(cached.headers.get('sw-fetched-time') || Date.now()).getTime();
                         if (Date.now() - cachedTime < MAX_CACHE_AGE) {
+                            console.log('[SW] Из кэша:', request.url);
                             return cached;
                         }
                     }
+                    // Загружаем свежую версию
                     return fetch(request).then((response) => {
                         const responseClone = response.clone();
                         caches.open(STATIC_CACHE).then((cache) => {
@@ -121,10 +222,11 @@ self.addEventListener('fetch', (event) => {
                             cache.put(request, responseClone);
                         });
                         return response;
-                    }).catch((err) => {
-                        console.log('[SW] Ошибка загрузки статики:', url.pathname, err);
-                        return new Response('', {status: 404});
                     });
+                })
+                .catch(() => {
+                    console.log('[SW] Ошибка fetch:', request.url);
+                    return new Response('', {status: 404});
                 })
         );
         return;
@@ -141,8 +243,6 @@ self.addEventListener('fetch', (event) => {
                             cache.put(request, responseClone);
                         });
                         return response;
-                    }).catch((err) => {
-                        console.log('[SW] Ошибка загрузки HTML:', url.pathname, err);
                     });
                     return cached || fetchPromise;
                 })
@@ -164,12 +264,11 @@ self.addEventListener('fetch', (event) => {
                         cache.put(request, responseClone);
                     });
                     return response;
-                }).catch((err) => {
-                    console.log('[SW] Ошибка fetch:', url.pathname, err);
                 });
                 return cached || fetchPromise;
             })
             .catch(() => {
+                console.log('[SW] Ошибка fetch:', request.url);
                 return new Response('', {status: 404});
             })
     );
