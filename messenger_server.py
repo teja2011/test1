@@ -935,27 +935,31 @@ def api_username_set():
     # Создаём сессию СРАЗУ и используем её для всего
     db = get_db()
     try:
-
+        # Получаем пользователя в рамках этой сессии
         user = db.query(User).filter_by(id=int(user_id)).first()
         if not user:
             return jsonify({'success': False, 'message': 'User not found'})
 
         if not jt_username:
+            # Пустой - удаляем
             user.jt_username = None
             db.commit()
             return jsonify({'success': True, 'jt_username': None})
 
-        # Проверка валидности (5-32 символа, латиница, цифры, точки, подчёркивания, нет подряд идущих точек или подчёркиваний, не заканчивается на точку или подчёркивание, не занято ли)
+        # Проверка валидности: 5-32 символа, латиница, цифры, точки, подчёркивания
         import re
         if not re.match(r'^[a-zA-Z][a-zA-Z0-9_.]{4,31}$', jt_username):
             return jsonify({'success': False, 'message': 'Неверный формат. 5-32 символа, начинается с буквы (a-z), латиница, цифры, точки и подчёркивания'})
 
+        # Проверяем что нет подряд идущих точек или подчёркиваний
         if '..' in jt_username or '__' in jt_username:
             return jsonify({'success': False, 'message': 'Username не может содержать подряд идущие точки или подчёркивания'})
 
+        # Проверяем что не заканчивается на точку или подчёркивание
         if jt_username.endswith('.') or jt_username.endswith('_'):
             return jsonify({'success': False, 'message': 'Username не может заканчиваться на точку или подчёркивание'})
 
+        # Проверяем, не занято ли
         existing = db.query(User).filter_by(jt_username=jt_username).first()
         if existing and existing.id != user.id:
             return jsonify({'success': False, 'message': 'Этот @username уже занят'})
