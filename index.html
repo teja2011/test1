@@ -21,9 +21,6 @@
     <title>Jetesk Мессенджер</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-        *, *::before, *::after {
-            transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
-        }
         :root {
             --bg: #0f172a;
             --surface: #1e293b;
@@ -40,19 +37,19 @@
         }
         /* Светлая тема */
         :root.light-theme {
-            --bg: #f1f5f9;
-            --surface: #a3a3a3;
-            --primary: #dbdbdb;
-            --text: #1e293b;
-            --text-secondary: #64748b;
-            --border: #e8e8e8;
+            --bg: #e2e8f0;
+            --surface: #f1f5f9;
+            --primary: #4f46e5;
+            --text: #0f172a;
+            --text-secondary: #475569;
+            --border: #cbd5e1;
             --message-me: #6366f1;
-            --message-other: #e2e8f0;
+            --message-other: #cbd5e1;
             --success: #059669;
             --error: #dc2626;
-            --shadow: rgba(0, 0, 0, 0.1);
-            --bg-gradient: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
-            --overlay: rgba(0, 0, 0, 0.3);
+            --shadow: rgba(0, 0, 0, 0.15);
+            --bg-gradient: linear-gradient(135deg, #e2e8f0 0%, #cbd5e1 100%);
+            --overlay: rgba(0, 0, 0, 0.4);
         }
         :root {
             --bg-gradient: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
@@ -133,7 +130,6 @@
             left: 0;
             right: 0;
             bottom: 0;
-            transition: background 0.5s ease, color 0.3s ease;
         }
         .container {
             width: 100%;
