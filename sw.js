@@ -24,7 +24,7 @@ self.addEventListener('install', (event) => {
                 // Кэшируем только основные файлы, игнорируя ошибки
                 return Promise.all(
                     STATIC_ASSETS.map(url => {
-                        return fetch(url)
+                        return fetch(url, { redirect: 'follow', mode: 'cors' })
                             .then(response => {
                                 if (response.ok) {
                                     return cache.put(url, response);
@@ -162,6 +162,36 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
+    // Пропускаем chrome-error:// и другие не-http запросы
+    if (!url.protocol.startsWith('http')) {
+        return;
+    }
+
+    // Навигационные запросы (HTML страницы) - обрабатываем отдельно
+    if (request.mode === 'navigate') {
+        event.respondWith(
+            fetch(request, { 
+                redirect: 'follow',
+                mode: 'navigate'
+            })
+                .then((response) => {
+                    // Клонируем и кэшируем только успешные ответы
+                    if (response.ok) {
+                        const responseClone = response.clone();
+                        caches.open(DYNAMIC_CACHE).then((cache) => {
+                            cache.put(request, responseClone);
+                        });
+                    }
+                    return response;
+                })
+                .catch(() => {
+                    // При ошибке возвращаем из кэша или fallback
+                    return caches.match('/index.html');
+                })
+        );
+        return;
+    }
+
     // Пропускаем внешние запросы (кроме Google Analytics)
     if (url.origin !== self.location.origin && !url.hostname.includes('googletagmanager')) {
         return;
@@ -170,7 +200,11 @@ self.addEventListener('fetch', (event) => {
     // API запросы - Network First с fallback в кэш
     if (url.pathname.includes('/api/')) {
         event.respondWith(
-            fetch(request)
+            fetch(request, { 
+                redirect: 'follow',
+                mode: 'cors',
+                credentials: 'same-origin'
+            })
                 .then((response) => {
                     // Клонируем ответ для кэширования
                     const responseClone = response.clone();
@@ -201,7 +235,7 @@ self.addEventListener('fetch', (event) => {
         if (request.url.includes('googletagmanager') || request.url.includes('google-analytics')) {
             return;
         }
-        
+
         event.respondWith(
             caches.match(request)
                 .then((cached) => {
@@ -214,7 +248,11 @@ self.addEventListener('fetch', (event) => {
                         }
                     }
                     // Загружаем свежую версию
-                    return fetch(request).then((response) => {
+                    return fetch(request, { 
+                        redirect: 'follow',
+                        mode: 'cors',
+                        credentials: 'same-origin'
+                    }).then((response) => {
                         const responseClone = response.clone();
                         caches.open(STATIC_CACHE).then((cache) => {
                             const headers = new Headers(responseClone.headers);
@@ -237,7 +275,11 @@ self.addEventListener('fetch', (event) => {
         event.respondWith(
             caches.match(request)
                 .then((cached) => {
-                    const fetchPromise = fetch(request).then((response) => {
+                    const fetchPromise = fetch(request, { 
+                        redirect: 'follow',
+                        mode: 'cors',
+                        credentials: 'same-origin'
+                    }).then((response) => {
                         const responseClone = response.clone();
                         caches.open(DYNAMIC_CACHE).then((cache) => {
                             cache.put(request, responseClone);
@@ -257,7 +299,11 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
         caches.match(request)
             .then((cached) => {
-                const fetchPromise = fetch(request).then((response) => {
+                const fetchPromise = fetch(request, { 
+                    redirect: 'follow',
+                    mode: 'cors',
+                    credentials: 'same-origin'
+                }).then((response) => {
                     const responseClone = response.clone();
                     caches.open(DYNAMIC_CACHE).then((cache) => {
                         trimCache(DYNAMIC_CACHE, MAX_CACHE_SIZE);
