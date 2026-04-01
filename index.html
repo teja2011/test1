@@ -2224,8 +2224,15 @@
         function startRecording(e) {
             if (e) { e.preventDefault(); e.stopPropagation(); }
             
+            // Проверка: HTTPS или localhost
+            var isSecure = window.isSecureContext || window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+            if (!isSecure) {
+                alert('Для записи голоса требуется HTTPS. Откройте сайт по защищённому соединению.\n\nДля локальной тестирования используйте http://localhost');
+                return;
+            }
+            
             if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                alert('Ваш браузер не поддерживает запись голоса');
+                alert('Ваш браузер не поддерживает запись голоса. Используйте Chrome, Firefox, Edge или Safari.');
                 return;
             }
 
@@ -2261,7 +2268,15 @@
                 })
                 .catch(function(err) {
                     console.error('Ошибка записи:', err);
-                    alert('Не удалось получить доступ к микрофону: ' + err.message);
+                    var errorMsg = 'Не удалось получить доступ к микрофону: ' + err.message;
+                    if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+                        errorMsg = '❌ Доступ к микрофону запрещён.\n\nКак разрешить:\n1. Нажмите на значок замка 🔒 в адресной строке\n2. Выберите "Настройки сайта" или "Разрешения"\n3. Включите доступ к микрофону\n4. Обновите страницу';
+                    } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+                        errorMsg = '🎤 Микрофон не найден. Подключите микрофон и попробуйте снова.';
+                    } else if (err.name === 'NotReadableError' || err.name === 'DeviceInUseError') {
+                        errorMsg = 'Микрофон занят другим приложением. Закройте другие программы и попробуйте снова.';
+                    }
+                    alert(errorMsg);
                 });
         }
 
