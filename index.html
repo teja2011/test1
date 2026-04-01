@@ -997,7 +997,9 @@
                                 <span id="recordingTime" style="font-size: 13px; font-weight: 500; min-width: 40px; color: var(--text);">0:00</span>
                                 <div id="waveform" class="waveform-container" style="flex: 1;"></div>
                                 <button id="stopRecordingBtn" onclick="stopRecording()" style="background: #ef4444; color: white; border: none; border-radius: 50%; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; margin-left: 8px;" title="Отправить запись">
-                                    ⏹️
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="white">
+                                        <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+                                    </svg>
                                 </button>
                             </div>
                         </div>
@@ -1030,7 +1032,9 @@
 
             <!-- Кнопка прокрутки чата -->
             <button id="scrollToBottomBtn" onclick="scrollToBottom()" style="display: none; position: fixed; bottom: 80px; right: 20px; width: 50px; height: 50px; border-radius: 50%; background: var(--primary); color: white; border: none; cursor: pointer; font-size: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); z-index: 1000; -webkit-tap-highlight-color: transparent;" title="Прокрутить вниз">
-                ⬇️
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
+                    <path d="M12 16L6 10H18L12 16Z"/>
+                </svg>
             </button>
         </div>
     </div>
@@ -1112,6 +1116,8 @@
         var selectedUserForPrivate = null;
         var refreshInterval = null;
         var onlineInterval = null;
+        var lastMessagesInterval = null;
+        var messagesInterval = null;
         var selectedFile = null;
         var selectedFileData = null;
         var selectedFileType = null;
@@ -1351,6 +1357,11 @@
         }
 
         function logout() {
+            // Очищаем все интервалы при выходе
+            if (onlineInterval) clearInterval(onlineInterval);
+            if (lastMessagesInterval) clearInterval(lastMessagesInterval);
+            if (messagesInterval) clearInterval(messagesInterval);
+            
             apiFetch('/api/logout').then(function() {
                 location.reload();
             });
@@ -2684,15 +2695,28 @@
 
             setTimeout(function() { scrollToBottom(); }, 100);
 
+            // Очищаем старые интервалы
             if (onlineInterval) clearInterval(onlineInterval);
+            if (lastMessagesInterval) clearInterval(lastMessagesInterval);
+            if (messagesInterval) clearInterval(messagesInterval);
+
+            // Обновляем статус онлайн каждую секунду
             onlineInterval = setInterval(function() {
                 updateOnlineStatus();
-            }, 10000);
+                loadUsers(); // Обновляем список пользователей (статусы "в сети")
+            }, 1000);
 
-            if (lastMessagesInterval) clearInterval(lastMessagesInterval);
+            // Обновляем последние сообщения каждую секунду
             lastMessagesInterval = setInterval(function() {
                 loadLastMessages();
-            }, 10000);
+            }, 1000);
+
+            // Обновляем текущие сообщения каждую секунду (если выбран чат)
+            messagesInterval = setInterval(function() {
+                if (selectedUserId !== null) {
+                    loadMessages();
+                }
+            }, 1000);
 
             initTabs();
             showFooter();
@@ -2709,8 +2733,23 @@
 
         function updateOnlineStatus() {
             apiFetch('/api/heartbeat', { method: 'POST' })
+                .then(function(r) {
+                    if (r.ok) {
+                        // Обновляем статус "В сети" в шапке
+                        var headerStatus = document.querySelector('.header .user-info span');
+                        if (headerStatus) {
+                            headerStatus.textContent = ' В сети';
+                            headerStatus.style.color = 'rgb(29, 180, 24)';
+                        }
+                    }
+                })
                 .catch(function(err) {
                     console.error('Ошибка обновления статуса:', err);
+                    var headerStatus = document.querySelector('.header .user-info span');
+                    if (headerStatus) {
+                        headerStatus.textContent = ' Не в сети';
+                        headerStatus.style.color = 'var(--text-secondary)';
+                    }
                 });
         }
 
