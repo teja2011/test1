@@ -445,7 +445,14 @@ def api_messages(recipient_id=None):
                 msg_status = m.status or 'sent'
             except:
                 msg_status = 'sent'
-            result.append({
+            
+            # Для голосовых сообщений добавляем длительность
+            duration = None
+            if m.file_type == 'voice':
+                # Пытаемся получить длительность из метаданных или устанавливаем по умолчанию
+                duration = '0:00'  # По умолчанию, в будущем можно вычислять из аудио
+            
+            msg_dict = {
                 'id': m.id,
                 'sender': sender.username if sender else 'Unknown',
                 'content': m.content,
@@ -453,7 +460,10 @@ def api_messages(recipient_id=None):
                 'is_mine': m.sender_id == user.id,
                 'file_type': m.file_type,
                 'status': msg_status
-            })
+            }
+            if duration:
+                msg_dict['duration'] = duration
+            result.append(msg_dict)
         return jsonify(result)
     finally:
         db.close()
@@ -508,10 +518,10 @@ def api_send_file():
     """Отправка файла (изображения или другого файла)"""
     # Гарантируем что таблицы существуют
     ensure_tables()
-    
+
     print(f"[send-file] DATABASE_URL present: {bool(DATABASE_URL)}")
     print(f"[send-file] Tables initialized: {_tables_initialized}")
-    
+
     user = get_current_user()
     if not user:
         print(f"[send-file] Not authorized")
@@ -519,33 +529,53 @@ def api_send_file():
 
     recipient_id = request.form.get('recipient_id')
     file_data = request.form.get('file_data')  # Base64 данные
-    file_type = request.form.get('file_type')  # 'image' или 'file'
+    file_type = request.form.get('file_type')  # 'image', 'file', или 'voice'
 
     print(f"[send-file] User: {user.id}, file_type: {file_type}, recipient: {recipient_id}")
     print(f"[send-file] File data length: {len(file_data) if file_data else 0}")
 
-    if not file_data:
-        print(f"[send-file] No file data in request")
-        return jsonify({'success': False, 'message': 'No file data'})
-
-    # Проверяем размер данных (макс 10MB base64)
-    if len(file_data) > 10 * 1024 * 1024:
-        print(f"[send-file] File too large: {len(file_data)} bytes")
-        return jsonify({'success': False, 'message': 'File too large (max 10MB)'})
-
     db = get_db()
     try:
-        # Проверяем, что данные начинаются с data: URL
-        if not file_data.startswith('data:'):
-            print(f"[send-file] Invalid data URL format")
-            return jsonify({'success': False, 'message': 'Invalid file format'})
+        content = None
+        
+        # Обработка голосовых сообщений через multipart/form-data
+        if file_type == 'voice' and 'file' in request.files:
+            file = request.files['file']
+            if file and file.filename:
+                # Сохраняем файл в Cloudinary
+                import cloudinary.uploader
+                upload_result = cloudinary.uploader.upload(
+                    file.stream,
+                    folder='jtesk/voice',
+                    resource_type='auto',
+                    public_id=f'voice_{user.id}_{int(time.time())}'
+                )
+                content = upload_result['secure_url']
+                print(f"[send-file] Voice uploaded to Cloudinary: {content}")
+            else:
+                return jsonify({'success': False, 'message': 'No file uploaded'})
+        # Обработка base64 данных (изображения и файлы)
+        elif file_data:
+            # Проверяем размер данных (макс 10MB base64)
+            if len(file_data) > 10 * 1024 * 1024:
+                print(f"[send-file] File too large: {len(file_data)} bytes")
+                return jsonify({'success': False, 'message': 'File too large (max 10MB)'})
+
+            # Проверяем, что данные начинаются с data: URL
+            if not file_data.startswith('data:'):
+                print(f"[send-file] Invalid data URL format")
+                return jsonify({'success': False, 'message': 'Invalid file format'})
+            content = file_data
+        else:
+            print(f"[send-file] No file data in request")
+            return jsonify({'success': False, 'message': 'No file data'})
 
         # Пробуем со статусом
         try:
             msg = Message(
                 sender_id=user.id,
                 recipient_id=recipient_id if recipient_id else None,
-                content=file_data,
+                content=content,
                 file_type=file_type,
                 status='sent'
             )
@@ -558,7 +588,7 @@ def api_send_file():
             msg = Message(
                 sender_id=user.id,
                 recipient_id=recipient_id if recipient_id else None,
-                content=file_data,
+                content=content,
                 file_type=file_type
             )
             db.add(msg)
@@ -570,10 +600,11 @@ def api_send_file():
             try:
                 recipient = db.query(User).filter_by(id=int(recipient_id)).first()
                 if recipient:
+                    notif_message = f"Голосовое сообщение от {user.username}" if file_type == 'voice' else f"Новое фото от {user.username}"
                     create_notification(
                         db=db,
                         user_id=int(recipient_id),
-                        message=f"Новое фото от {user.username}",
+                        message=notif_message,
                         sender_id=user.id,
                         notif_type='message'
                     )
@@ -824,6 +855,11 @@ def api_last_messages():
                 Message.status != 'read'
             ).count()
             
+            # Для голосовых сообщений добавляем длительность
+            duration = None
+            if msg.file_type == 'voice':
+                duration = '0:00'
+            
             result.append({
                 'id': msg.id,
                 'sender': sender.username if sender else 'Unknown',
@@ -833,7 +869,8 @@ def api_last_messages():
                 'created_at': to_msk(msg.created_at).strftime('%H:%M'),
                 'file_type': msg.file_type,
                 'status': getattr(msg, 'status', 'sent') or 'sent',
-                'unread_count': unread_count
+                'unread_count': unread_count,
+                'duration': duration
             })
 
         return jsonify(result)
