@@ -670,6 +670,40 @@ def api_keepalive():
     """Keep-Alive эндпоинт для предотвращения засыпания сервера"""
     return jsonify({'status': 'ok', 'timestamp': datetime.utcnow().isoformat()})
 
+@app.route('/api/delete-message', methods=['POST'])
+def api_delete_message():
+    """Удаление сообщения"""
+    user = get_current_user()
+    if not user:
+        return jsonify({'success': False, 'message': 'Not authorized'})
+    
+    data = request.json
+    message_id = data.get('message_id')
+    
+    if not message_id:
+        return jsonify({'success': False, 'message': 'No message_id'})
+    
+    db = get_db()
+    try:
+        msg = db.query(Message).filter_by(id=int(message_id)).first()
+        if not msg:
+            return jsonify({'success': False, 'message': 'Message not found'})
+        
+        # Проверяем, что пользователь является автором сообщения
+        if msg.sender_id != user.id:
+            return jsonify({'success': False, 'message': 'Not your message'})
+        
+        db.delete(msg)
+        db.commit()
+        print(f"[delete-message] Message {message_id} deleted by user {user.id}")
+        return jsonify({'success': True})
+    except Exception as e:
+        db.rollback()
+        print(f"[delete-message] Error: {e}")
+        return jsonify({'success': False, 'message': str(e)})
+    finally:
+        db.close()
+
 @app.route('/api/settings/clear-messages', methods=['POST'])
 def api_clear_messages():
     """Удаляет все сообщения, отправленные текущим пользователем"""
