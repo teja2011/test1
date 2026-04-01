@@ -523,6 +523,53 @@
             padding: 8px;
         }
         .icon-btn:hover { color: var(--primary); transform: scale(1.1); }
+        /* Анимация записи голоса */
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(1.2); }
+        }
+        .waveform-bar {
+            width: 4px;
+            background: var(--primary);
+            border-radius: 2px;
+            animation: wave 0.5s ease-in-out infinite;
+        }
+        @keyframes wave {
+            0%, 100% { height: 8px; }
+            50% { height: 28px; }
+        }
+        .voice-message {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            min-width: 200px;
+            max-width: 280px;
+        }
+        .voice-play-btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: var(--primary);
+            color: white;
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+        .voice-waveform {
+            flex: 1;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            gap: 3px;
+        }
+        .voice-duration {
+            font-size: 12px;
+            color: var(--text-secondary);
+            min-width: 35px;
+        }
         .file-preview {
             display: flex;
             align-items: center;
@@ -963,11 +1010,39 @@
 
                     <div class="chat-input-area hidden" style="flex-direction: column; align-items: stretch;">
                         <div id="filePreviewContainer" style="display: none;"></div>
+                        <div id="voiceRecordPreview" style="display: none; padding: 12px; background: var(--bg); border-radius: 12px; margin-bottom: 8px; align-items: center; gap: 12px;">
+                            <div class="recording-indicator" style="display: flex; align-items: center; gap: 8px; flex: 1;">
+                                <span class="recording-dot" style="width: 12px; height: 12px; background: #ef4444; border-radius: 50%; animation: pulse 1s infinite;"></span>
+                                <span class="recording-time" id="recordingTime" style="font-size: 14px; font-weight: 500;">0:00</span>
+                                <div class="waveform" id="waveform" style="flex: 1; height: 32px; display: flex; align-items: center; gap: 3px;"></div>
+                            </div>
+                            <div style="display: flex; gap: 8px;">
+                                <button class="icon-btn" id="cancelRecordingBtn" onclick="cancelRecording()" title="Отменить" style="background: var(--surface); border: 1px solid var(--border);">
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M18 6L6 18M6 6l12 12"/>
+                                    </svg>
+                                </button>
+                                <button class="icon-btn" id="sendRecordingBtn" onclick="sendVoiceMessage()" title="Отправить" style="background: var(--primary);">
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <line x1="22" y1="2" x2="11" y2="13"></line>
+                                        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
                         <div style="display: flex; gap: 12px; align-items: center;">
                             <input type="file" id="fileInput" accept="image/*,*/*" style="display:none;" onchange="handleFileSelect(event)">
                             <button class="icon-btn" onclick="document.getElementById('fileInput').click()" title="Прикрепить файл">
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                     <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
+                                </svg>
+                            </button>
+                            <button class="icon-btn" id="voiceRecordBtn" onmousedown="startRecording()" onmouseup="stopRecording()" ontouchstart="startRecording(event)" ontouchend="stopRecording(event)" title="Голосовое сообщение" style="position: relative;">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                                    <line x1="12" y1="19" x2="12" y2="23"/>
+                                    <line x1="8" y1="23" x2="16" y2="23"/>
                                 </svg>
                             </button>
                             <input type="text" class="chat-input" id="messageInput" placeholder="Введите сообщение..." onkeypress="if(event.key==='Enter')sendMessage()">
@@ -1388,10 +1463,14 @@
                     var lastMessageHtml = '';
                     if (!userItem.is_online && lastMessagesMap[userItem.id]) {
                         var lastMsg = lastMessagesMap[userItem.id];
-                        var statusIcon = lastMsg.is_mine 
+                        var statusIcon = lastMsg.is_mine
                             ? (lastMsg.status === 'read' || lastMsg.status === 'delivered' ? '✓✓' : lastMsg.status === 'sent' ? '✓' : lastMsg.status === 'sending' ? '⏳' : '')
                             : '';
-                        var preview = lastMsg.file_type === 'image' ? '📷 Фото' : lastMsg.file_type === 'file' ? '📄 Файл' : escapeHtml(lastMsg.content);
+                        var preview = '';
+                        if (lastMsg.file_type === 'image') preview = '📷 Фото';
+                        else if (lastMsg.file_type === 'file') preview = '📄 Файл';
+                        else if (lastMsg.file_type === 'voice') preview = '🎤 Голосовое';
+                        else preview = escapeHtml(lastMsg.content);
                         if (statusIcon) lastMessageHtml = '<div class="user-last-message"><span class="status-icon">' + statusIcon + '</span>' + preview + '</div>';
                     }
 
@@ -2135,6 +2214,175 @@
             .catch(function(err) { alert('Ошибка: ' + err.message); btn.disabled = false; });
         }
 
+        // Переменные для записи голоса
+        var mediaRecorder = null;
+        var audioChunks = [];
+        var recordingInterval = null;
+        var recordingStartTime = null;
+        var voiceBlob = null;
+
+        function startRecording(e) {
+            if (e) { e.preventDefault(); e.stopPropagation(); }
+            
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                alert('Ваш браузер не поддерживает запись голоса');
+                return;
+            }
+
+            navigator.mediaDevices.getUserMedia({ audio: true })
+                .then(function(stream) {
+                    mediaRecorder = new MediaRecorder(stream);
+                    audioChunks = [];
+
+                    mediaRecorder.addEventListener('dataavailable', function(event) {
+                        audioChunks.push(event.data);
+                    });
+
+                    mediaRecorder.addEventListener('stop', function() {
+                        voiceBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                    });
+
+                    mediaRecorder.start();
+                    recordingStartTime = new Date();
+                    
+                    // Показываем превью записи
+                    var preview = document.getElementById('voiceRecordPreview');
+                    preview.style.display = 'flex';
+                    
+                    // Запускаем таймер
+                    recordingInterval = setInterval(updateRecordingTime, 1000);
+                    
+                    // Создаём визуализацию волны
+                    createWaveform();
+                    
+                    // Блокируем кнопку записи
+                    var recordBtn = document.getElementById('voiceRecordBtn');
+                    recordBtn.style.color = '#ef4444';
+                })
+                .catch(function(err) {
+                    console.error('Ошибка записи:', err);
+                    alert('Не удалось получить доступ к микрофону: ' + err.message);
+                });
+        }
+
+        function stopRecording(e) {
+            if (e) { e.preventDefault(); e.stopPropagation(); }
+            
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                mediaRecorder.stop();
+                mediaRecorder.stream.getTracks().forEach(function(track) { track.stop(); });
+                
+                // Останавливаем таймер
+                if (recordingInterval) {
+                    clearInterval(recordingInterval);
+                    recordingInterval = null;
+                }
+                
+                // Возвращаем цвет кнопки
+                var recordBtn = document.getElementById('voiceRecordBtn');
+                recordBtn.style.color = '';
+            }
+        }
+
+        function cancelRecording() {
+            stopRecording();
+            
+            // Скрываем превью
+            var preview = document.getElementById('voiceRecordPreview');
+            preview.style.display = 'none';
+            
+            // Очищаем blob
+            voiceBlob = null;
+            
+            // Удаляем визуализацию
+            var waveform = document.getElementById('waveform');
+            waveform.innerHTML = '';
+        }
+
+        function updateRecordingTime() {
+            if (!recordingStartTime) return;
+            
+            var now = new Date();
+            var diff = Math.floor((now - recordingStartTime) / 1000);
+            var minutes = Math.floor(diff / 60);
+            var seconds = diff % 60;
+            var timeStr = minutes + ':' + (seconds < 10 ? '0' : '') + seconds;
+            
+            var timeEl = document.getElementById('recordingTime');
+            if (timeEl) timeEl.textContent = timeStr;
+        }
+
+        function createWaveform() {
+            var waveform = document.getElementById('waveform');
+            if (!waveform) return;
+            
+            waveform.innerHTML = '';
+            for (var i = 0; i < 20; i++) {
+                var bar = document.createElement('div');
+                bar.className = 'waveform-bar';
+                bar.style.animationDelay = (i * 0.05) + 's';
+                waveform.appendChild(bar);
+            }
+        }
+
+        function sendVoiceMessage() {
+            if (!voiceBlob) {
+                alert('Ошибка: аудио не записано');
+                return;
+            }
+
+            var formData = new FormData();
+            formData.append('file', voiceBlob, 'voice_' + Date.now() + '.webm');
+            formData.append('recipient_id', selectedUserId === 0 ? null : selectedUserId);
+            formData.append('file_type', 'voice');
+
+            var preview = document.getElementById('voiceRecordPreview');
+            preview.style.display = 'none';
+
+            apiFetch('/api/send-file', { method: 'POST', body: formData })
+                .then(function(r) { if (!r.ok) throw new Error('Ошибка: ' + r.status); return r.json(); })
+                .then(function(result) {
+                    if (result.success) {
+                        clearFilePreview();
+                        loadMessages();
+                        loadLastMessages();
+                    } else {
+                        alert('Ошибка: ' + (result.message || 'Неизвестная ошибка'));
+                    }
+                })
+                .catch(function(err) {
+                    alert('Ошибка: ' + err.message);
+                });
+
+            voiceBlob = null;
+        }
+
+        function playVoiceMessage(audioUrl, btn) {
+            var audio = new Audio(audioUrl);
+            var originalContent = btn.innerHTML;
+            
+            btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>';
+            
+            audio.addEventListener('ended', function() {
+                btn.innerHTML = originalContent;
+            });
+            
+            audio.addEventListener('error', function() {
+                btn.innerHTML = originalContent;
+            });
+            
+            audio.play();
+        }
+
+        function generateVoiceWaveform(bars) {
+            var html = '';
+            for (var i = 0; i < bars; i++) {
+                var height = 8 + Math.random() * 20;
+                html += '<div style="width: 3px; height: ' + height + 'px; background: var(--primary); border-radius: 2px;"></div>';
+            }
+            return html;
+        }
+
         function addMessageToDOM(msg) {
             console.log('[addMessageToDOM] Добавляем сообщение:', msg.id);
             var container = document.getElementById('messagesContainer');
@@ -2154,6 +2402,18 @@
                 bubbleContent = '<img src="' + msg.content + '" class="chat-img" onclick="window.open(this.src)">';
             } else if (msg.file_type === 'file') {
                 bubbleContent = '<a href="' + msg.content + '" download class="file-attachment">📄 Файл</a>';
+            } else if (msg.file_type === 'voice') {
+                var duration = msg.duration || '0:00';
+                bubbleContent = '<div class="voice-message">' +
+                    '<button class="voice-play-btn" onclick="playVoiceMessage(\'' + msg.content + '\', this)">' +
+                    '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">' +
+                    '<path d="M8 5v14l11-7z"/>' +
+                    '</svg></button>' +
+                    '<div class="voice-waveform">' +
+                    generateVoiceWaveform(15) +
+                    '</div>' +
+                    '<span class="voice-duration">' + duration + '</span>' +
+                    '</div>';
             } else {
                 bubbleContent = escapeHtml(msg.content);
             }
@@ -2972,6 +3232,7 @@
             }
         }
 
+        // Функция переключения темы
         function toggleTheme() {
             var isLight = document.documentElement.classList.toggle('light-theme');
             saveTheme(isLight);
