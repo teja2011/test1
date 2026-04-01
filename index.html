@@ -540,7 +540,7 @@
             background: var(--primary);
             border-radius: 2px;
             flex-shrink: 0;
-            transition: height 0.05s ease;
+            transition: height 0.05s ease, opacity 0.05s linear;
         }
         .file-preview {
             display: flex;
@@ -982,13 +982,6 @@
 
                     <div class="chat-input-area hidden" style="flex-direction: column; align-items: stretch;">
                         <div id="filePreviewContainer" style="display: none;"></div>
-                        <div id="voiceRecordPreview" style="display: none; padding: 16px; background: var(--bg); border-radius: 12px; margin-bottom: 8px; align-items: center; gap: 12px;">
-                            <div style="display: flex; align-items: center; gap: 12px; flex: 1;">
-                                <span style="width: 12px; height: 12px; background: #ef4444; border-radius: 50%; animation: pulse 1s infinite;"></span>
-                                <span id="recordingTime" style="font-size: 14px; font-weight: 500; min-width: 40px;">0:00</span>
-                                <div id="waveform" style="flex: 1; height: 40px; display: flex; align-items: center; gap: 2px; overflow: hidden;"></div>
-                            </div>
-                        </div>
                         <div style="display: flex; gap: 12px; align-items: center;">
                             <input type="file" id="fileInput" accept="image/*,*/*" style="display:none;" onchange="handleFileSelect(event)">
                             <button class="icon-btn" onclick="document.getElementById('fileInput').click()" title="Прикрепить файл">
@@ -1004,8 +997,11 @@
                                     <line x1="8" y1="23" x2="16" y2="23"/>
                                 </svg>
                             </button>
+                            <div id="voiceRecordPreview" style="display: none; flex: 1; height: 40px; align-items: center; gap: 2px; overflow: hidden;">
+                                <div id="waveform" style="display: flex; align-items: center; gap: 2px; height: 100%; width: 100%;"></div>
+                            </div>
                             <input type="text" class="chat-input" id="messageInput" placeholder="Введите сообщение..." onkeypress="if(event.key==='Enter')sendMessage()">
-                            <button class="send-btn" id="sendBtn" disabled onclick="sendMessage()">
+                            <button class="send-btn" id="sendBtn" disabled onclick="sendVoiceOrText()">
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                     <line x1="22" y1="2" x2="11" y2="13"></line>
                                     <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
@@ -1917,7 +1913,7 @@
                 messagesContainer.addEventListener('scroll', function() {
                     var btn = document.getElementById('scrollToBottomBtn');
                     var isAtBottom = messagesContainer.scrollHeight - messagesContainer.scrollTop - messagesContainer.clientHeight < 50;
-                    
+
                     if (!isAtBottom) {
                         btn.style.display = 'flex';
                         btn.style.alignItems = 'center';
@@ -1926,6 +1922,17 @@
                         btn.title = 'Прокрутить вниз';
                     } else {
                         btn.style.display = 'none';
+                    }
+                });
+            }
+            
+            // Обработчик ввода текста для кнопки отправки
+            var messageInput = document.getElementById('messageInput');
+            if (messageInput) {
+                messageInput.addEventListener('input', function() {
+                    var btn = document.getElementById('sendBtn');
+                    if (btn && !isRecording) {
+                        btn.disabled = !this.value.trim();
                     }
                 });
             }
@@ -2144,9 +2151,9 @@
                 .then(function(result) {
                     if (result.success) { clearFilePreview(); loadMessages(); loadLastMessages(); }
                     else { alert('Ошибка: ' + (result.message || 'Неизвестная ошибка')); }
-                    btn.disabled = false;
+                    btn.disabled = !content.trim();
                 })
-                .catch(function(err) { alert('Ошибка: ' + err.message); btn.disabled = false; });
+                .catch(function(err) { alert('Ошибка: ' + err.message); btn.disabled = !content.trim(); });
                 return;
             }
 
@@ -2172,9 +2179,9 @@
             .then(function(result) {
                 if (result.success) { loadMessages(); loadLastMessages(); }
                 else { alert('Ошибка: ' + (result.message || 'Неизвестная ошибка')); }
-                btn.disabled = false;
+                btn.disabled = true;
             })
-            .catch(function(err) { alert('Ошибка: ' + err.message); btn.disabled = false; });
+            .catch(function(err) { alert('Ошибка: ' + err.message); btn.disabled = true; });
         }
 
         var mediaRecorder = null;
@@ -2186,7 +2193,7 @@
         var analyser = null;
         var animationFrame = null;
         var waveformBars = [];
-        var maxBars = 50;
+        var maxBars = 30;
 
         function startRecording(e) {
             if (e) { e.preventDefault(); e.stopPropagation(); }
@@ -2232,8 +2239,13 @@
                     microphone = audioContext.createMediaStreamSource(stream);
                     microphone.connect(analyser);
 
+                    // Скрываем поле ввода, показываем превью записи
+                    document.getElementById('messageInput').style.display = 'none';
                     document.getElementById('voiceRecordPreview').style.display = 'flex';
-                    document.getElementById('messageInput').parentElement.style.display = 'none';
+
+                    // Включаем кнопку отправки
+                    var sendBtn = document.getElementById('sendBtn');
+                    if (sendBtn) sendBtn.disabled = false;
 
                     recordingInterval = setInterval(updateRecordingTime, 1000);
                     createWaveform();
@@ -2260,11 +2272,44 @@
                 var recordBtn = document.getElementById('voiceRecordBtn');
                 if (recordBtn) recordBtn.classList.remove('recording');
 
+                // Показываем поле ввода, скрываем превью
+                document.getElementById('messageInput').style.display = '';
                 document.getElementById('voiceRecordPreview').style.display = 'none';
-                document.getElementById('messageInput').parentElement.style.display = 'flex';
                 document.getElementById('waveform').innerHTML = '';
                 waveformBars = [];
+                
+                // Выключаем кнопку отправки
+                var sendBtn = document.getElementById('sendBtn');
+                if (sendBtn) sendBtn.disabled = true;
             }
+        }
+
+        function sendVoiceOrText() {
+            // Если идёт запись - отправляем голосовое
+            if (isRecording && audioChunks.length > 0) {
+                stopRecording();
+                setTimeout(function() {
+                    var voiceBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                    var formData = new FormData();
+                    formData.append('file', voiceBlob, 'voice_' + Date.now() + '.webm');
+                    formData.append('recipient_id', selectedUserId === 0 ? null : selectedUserId);
+                    formData.append('file_type', 'voice');
+                    apiFetch('/api/send-file', { method: 'POST', body: formData })
+                        .then(function(r) { return r.json(); })
+                        .then(function(result) {
+                            if (result.success) { loadMessages(); loadLastMessages(); }
+                        });
+                    audioChunks = [];
+                    isRecording = false;
+                    
+                    // Выключаем кнопку
+                    var sendBtn = document.getElementById('sendBtn');
+                    if (sendBtn) sendBtn.disabled = true;
+                }, 100);
+                return;
+            }
+            // Иначе отправляем текст
+            sendMessage();
         }
 
         function updateRecordingTime() {
@@ -2272,8 +2317,6 @@
             var diff = Math.floor((new Date() - recordingStartTime) / 1000);
             var minutes = Math.floor(diff / 60);
             var seconds = diff % 60;
-            var timeEl = document.getElementById('recordingTime');
-            if (timeEl) timeEl.textContent = minutes + ':' + (seconds < 10 ? '0' : '') + seconds;
         }
 
         function createWaveform() {
@@ -2300,7 +2343,9 @@
             // Сдвигаем все бары влево
             for (var i = maxBars - 1; i > 0; i--) {
                 var prevHeight = waveformBars[i - 1].style.height;
+                var prevOpacity = waveformBars[i - 1].style.opacity || '1';
                 waveformBars[i].style.height = prevHeight;
+                waveformBars[i].style.opacity = prevOpacity;
             }
 
             // Первый бар - текущая громкость
@@ -2309,6 +2354,22 @@
             var maxHeight = 40;
             var height = minHeight + (volume / 255) * (maxHeight - minHeight);
             waveformBars[0].style.height = height + 'px';
+            waveformBars[0].style.opacity = '1';
+
+            // Проверяем, исчез ли последний бар
+            if (waveformBars[maxBars - 1].style.opacity === '0') {
+                waveformBars[maxBars - 1].style.height = '8px';
+                waveformBars[maxBars - 1].style.opacity = '1';
+            }
+
+            // Запускаем анимацию исчезновения для всех баров
+            for (var i = 0; i < maxBars; i++) {
+                var currentOpacity = parseFloat(waveformBars[i].style.opacity || '1');
+                if (currentOpacity > 0) {
+                    var newOpacity = currentOpacity - 0.02;
+                    waveformBars[i].style.opacity = Math.max(0, newOpacity);
+                }
+            }
 
             animationFrame = requestAnimationFrame(updateWaveform);
         }
