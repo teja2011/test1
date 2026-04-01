@@ -535,21 +535,69 @@
             0%, 100% { opacity: 1; transform: scale(1); }
             50% { opacity: 0.5; transform: scale(1.2); }
         }
-        /* Стили для waveform бара */
         .waveform-bar {
-            width: 4px !important;
-            background: var(--primary) !important;
+            width: 4px;
+            background: var(--primary);
             border-radius: 2px;
-            transition: height 0.1s ease;
-            min-height: 8px;
+            flex-shrink: 0;
+            transition: height 0.05s ease, opacity 0.05s linear;
         }
-        .waveform-container {
-            flex: 1;
-            height: 40px;
+        .message-menu-btn {
+            position: absolute;
+            bottom: 2px;
+            right: 8px;
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+            background: transparent;
+            border: none;
+            cursor: pointer;
             display: flex;
             align-items: center;
-            gap: 3px;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.2s;
+            padding: 0;
+        }
+        .message:hover .message-menu-btn {
+            opacity: 1;
+        }
+        .message-menu-btn:hover {
+            background: rgba(0, 0, 0, 0.1);
+        }
+        .message-menu-btn svg {
+            width: 16px;
+            height: 16px;
+            fill: var(--text-secondary);
+        }
+        .message-context-menu {
+            position: fixed;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            box-shadow: 0 4px 12px var(--shadow);
+            z-index: 1000;
+            min-width: 150px;
             overflow: hidden;
+        }
+        .message-context-menu button {
+            width: 100%;
+            padding: 10px 16px;
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            text-align: left;
+            font-size: 14px;
+            color: var(--text);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .message-context-menu button:hover {
+            background: var(--bg);
+        }
+        .message-context-menu button.delete-btn {
+            color: #ef4444;
         }
         .file-preview {
             display: flex;
@@ -991,18 +1039,6 @@
 
                     <div class="chat-input-area hidden" style="flex-direction: column; align-items: stretch;">
                         <div id="filePreviewContainer" style="display: none;"></div>
-                        <div id="voiceRecordPreview" style="display: none; padding: 12px 16px; background: var(--bg); border-radius: 24px; margin-bottom: 8px; align-items: center; gap: 12px; border: 2px solid var(--border);">
-                            <div style="display: flex; align-items: center; gap: 12px; flex: 1;">
-                                <span style="width: 10px; height: 10px; background: #ef4444; border-radius: 50%; animation: pulse 1s infinite; flex-shrink: 0;"></span>
-                                <span id="recordingTime" style="font-size: 13px; font-weight: 500; min-width: 40px; color: var(--text);">0:00</span>
-                                <div id="waveform" class="waveform-container" style="flex: 1;"></div>
-                                <button id="stopRecordingBtn" onclick="stopRecording()" style="background: #ef4444; color: white; border: none; border-radius: 50%; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; margin-left: 8px;" title="Отправить запись">
-                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="white">
-                                        <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
-                                    </svg>
-                                </button>
-                            </div>
-                        </div>
                         <div style="display: flex; gap: 12px; align-items: center;">
                             <input type="file" id="fileInput" accept="image/*,*/*" style="display:none;" onchange="handleFileSelect(event)">
                             <button class="icon-btn" onclick="document.getElementById('fileInput').click()" title="Прикрепить файл">
@@ -1018,8 +1054,16 @@
                                     <line x1="8" y1="23" x2="16" y2="23"/>
                                 </svg>
                             </button>
+                            <div id="voiceRecordPreview" style="display: none; flex: 1; height: 40px; align-items: center; gap: 2px; overflow: hidden;">
+                                <div id="waveform" style="display: flex; align-items: center; gap: 2px; height: 100%; width: 100%;"></div>
+                            </div>
+                            <button class="icon-btn" id="cancelVoiceBtn" onclick="cancelVoiceRecording()" title="Удалить запись" style="display: none; color: #ef4444;">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                                </svg>
+                            </button>
                             <input type="text" class="chat-input" id="messageInput" placeholder="Введите сообщение..." onkeypress="if(event.key==='Enter')sendMessage()">
-                            <button class="send-btn" id="sendBtn" disabled onclick="sendMessage()">
+                            <button class="send-btn" id="sendBtn" disabled onclick="sendVoiceOrText()">
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                     <line x1="22" y1="2" x2="11" y2="13"></line>
                                     <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
@@ -1032,9 +1076,7 @@
 
             <!-- Кнопка прокрутки чата -->
             <button id="scrollToBottomBtn" onclick="scrollToBottom()" style="display: none; position: fixed; bottom: 80px; right: 20px; width: 50px; height: 50px; border-radius: 50%; background: var(--primary); color: white; border: none; cursor: pointer; font-size: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); z-index: 1000; -webkit-tap-highlight-color: transparent;" title="Прокрутить вниз">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
-                    <path d="M12 16L6 10H18L12 16Z"/>
-                </svg>
+                ⬇️
             </button>
         </div>
     </div>
@@ -1116,8 +1158,6 @@
         var selectedUserForPrivate = null;
         var refreshInterval = null;
         var onlineInterval = null;
-        var lastMessagesInterval = null;
-        var messagesInterval = null;
         var selectedFile = null;
         var selectedFileData = null;
         var selectedFileType = null;
@@ -1357,11 +1397,6 @@
         }
 
         function logout() {
-            // Очищаем все интервалы при выходе
-            if (onlineInterval) clearInterval(onlineInterval);
-            if (lastMessagesInterval) clearInterval(lastMessagesInterval);
-            if (messagesInterval) clearInterval(messagesInterval);
-            
             apiFetch('/api/logout').then(function() {
                 location.reload();
             });
@@ -1498,7 +1533,11 @@
                 if (!user.is_online && lastMessagesMap[user.id]) {
                     var lastMsg = lastMessagesMap[user.id], statusIcon = '';
                     if (lastMsg.is_mine) statusIcon = lastMsg.status === 'read' || lastMsg.status === 'delivered' ? '✓✓' : lastMsg.status === 'sent' ? '✓' : lastMsg.status === 'sending' ? '⏳' : '';
-                    var preview = lastMsg.file_type === 'image' ? '📷 Фото' : lastMsg.file_type === 'file' ? '📄 Файл' : escapeHtml(lastMsg.content);
+                    var preview = '';
+                    if (lastMsg.file_type === 'image') preview = '📷 Фото';
+                    else if (lastMsg.file_type === 'file') preview = '📄 Файл';
+                    else if (lastMsg.file_type === 'voice') preview = '🎤 Голосовое';
+                    else preview = escapeHtml(lastMsg.content);
                     if (statusIcon) lastMessageHtml = '<div class="user-last-message"><span class="status-icon">' + statusIcon + '</span>' + preview + '</div>';
                 }
                 var displayName = escapeHtml(user.username);
@@ -1765,12 +1804,9 @@
                 })
                 .then(function(data) {
                     console.log('[API] Загружено сообщений:', data.length);
-                    data.forEach(function(msg) {
-                        console.log('[API] Сообщение id=' + msg.id + ', file_type=' + msg.file_type + ', content=' + (msg.content ? msg.content.substring(0, 80) : 'null'));
-                    });
                     messages = data;
                     renderMessages();
-
+                    
                     if (data.length > 0) {
                         saveMessagesToCache(data, userId).catch(console.error);
                     }
@@ -1853,24 +1889,6 @@
                     bubbleContent = '<img src="' + msg.content + '" class="chat-img" onclick="window.open(this.src)" style="max-width:200px;border-radius:8px;cursor:pointer;">';
                 }
                 else if (msg.file_type === 'file') bubbleContent = '<a href="' + msg.content + '" download class="file-attachment" style="color:var(--primary);">📄 Файл</a>';
-                else if (msg.file_type === 'voice') {
-                    // Исправление 4: Поддержка и base64, и URL из Cloudinary
-                    var audioSrc = msg.content || '';
-                    var audioType = 'audio/mp4';
-                    
-                    if (audioSrc.startsWith('data:')) {
-                        var mimeMatch = audioSrc.match(/^data:([^;]+);base64,/);
-                        if (mimeMatch) audioType = mimeMatch[1];
-                    } else if (audioSrc.includes('cloudinary.com')) {
-                        if (audioSrc.includes('.webm')) audioType = 'audio/webm';
-                        else if (audioSrc.includes('.mp3')) audioType = 'audio/mpeg';
-                        else if (audioSrc.includes('.mp4') || audioSrc.includes('.m4a')) audioType = 'audio/mp4';
-                    }
-                    
-                    bubbleContent = '<audio controls style="max-width: 280px;" controlsList="nodownload">' +
-                        '<source src="' + audioSrc + '" type="' + audioType + '">' +
-                        '</audio>';
-                }
                 else bubbleContent = escapeHtml(msg.content);
 
                 var statusIcon = msg.is_mine ? (msg.status === 'read' || msg.status === 'delivered' ? ' ✓✓' : msg.status === 'sent' ? ' ✓' : msg.status === 'sending' ? ' ⏳' : '') : '';
@@ -1912,25 +1930,6 @@
                     bubbleContent = '<img src="' + msg.content + '" class="chat-img" onclick="window.open(this.src)">';
                 }
                 else if (msg.file_type === 'file') bubbleContent = '<a href="' + msg.content + '" download class="file-attachment">📄 Файл</a>';
-                else if (msg.file_type === 'voice') {
-                    // Исправление 4: Поддержка и base64, и URL из Cloudinary
-                    var audioSrc = msg.content || '';
-                    var audioType = 'audio/mp4';
-                    
-                    if (audioSrc.startsWith('data:')) {
-                        var mimeMatch = audioSrc.match(/^data:([^;]+);base64,/);
-                        if (mimeMatch) audioType = mimeMatch[1];
-                    } else if (audioSrc.includes('cloudinary.com')) {
-                        if (audioSrc.includes('.webm')) audioType = 'audio/webm';
-                        else if (audioSrc.includes('.mp3')) audioType = 'audio/mpeg';
-                        else if (audioSrc.includes('.mp4') || audioSrc.includes('.m4a')) audioType = 'audio/mp4';
-                    }
-                    
-                    bubbleContent = '<audio controls style="max-width: 280px;" controlsList="nodownload">' +
-                        '<source src="' + audioSrc + '" type="' + audioType + '">' +
-                        '<span style="color: var(--text-secondary); font-size: 12px;">⚠️ Аудио</span>' +
-                        '</audio>';
-                }
                 else bubbleContent = escapeHtml(msg.content);
                 var statusIcon = '';
                 if (msg.is_mine) {
@@ -1985,6 +1984,17 @@
                         btn.title = 'Прокрутить вниз';
                     } else {
                         btn.style.display = 'none';
+                    }
+                });
+            }
+            
+            // Обработчик ввода текста для кнопки отправки
+            var messageInput = document.getElementById('messageInput');
+            if (messageInput) {
+                messageInput.addEventListener('input', function() {
+                    var btn = document.getElementById('sendBtn');
+                    if (btn && !isRecording) {
+                        btn.disabled = !this.value.trim();
                     }
                 });
             }
@@ -2203,9 +2213,9 @@
                 .then(function(result) {
                     if (result.success) { clearFilePreview(); loadMessages(); loadLastMessages(); }
                     else { alert('Ошибка: ' + (result.message || 'Неизвестная ошибка')); }
-                    btn.disabled = false;
+                    btn.disabled = !content.trim();
                 })
-                .catch(function(err) { alert('Ошибка: ' + err.message); btn.disabled = false; });
+                .catch(function(err) { alert('Ошибка: ' + err.message); btn.disabled = !content.trim(); });
                 return;
             }
 
@@ -2231,12 +2241,11 @@
             .then(function(result) {
                 if (result.success) { loadMessages(); loadLastMessages(); }
                 else { alert('Ошибка: ' + (result.message || 'Неизвестная ошибка')); }
-                btn.disabled = false;
+                btn.disabled = true;
             })
-            .catch(function(err) { alert('Ошибка: ' + err.message); btn.disabled = false; });
+            .catch(function(err) { alert('Ошибка: ' + err.message); btn.disabled = true; });
         }
 
-        // Переменные для записи голоса
         var mediaRecorder = null;
         var audioChunks = [];
         var recordingInterval = null;
@@ -2244,8 +2253,9 @@
         var isRecording = false;
         var audioContext = null;
         var analyser = null;
-        var microphone = null;
         var animationFrame = null;
+        var waveformBars = [];
+        var maxBars = 30;
 
         function startRecording(e) {
             if (e) { e.preventDefault(); e.stopPropagation(); }
@@ -2257,17 +2267,7 @@
 
             navigator.mediaDevices.getUserMedia({ audio: true })
                 .then(function(stream) {
-                    // Исправление 6: Пробуем использовать совместимые форматы
-                    // Safari поддерживает audio/mp4, Chrome - audio/webm
-                    var mimeType = 'audio/webm';
-                    if (MediaRecorder.isTypeSupported('audio/mp4')) {
-                        mimeType = 'audio/mp4';  // Лучшая совместимость с Safari
-                    } else if (MediaRecorder.isTypeSupported('audio/ogg')) {
-                        mimeType = 'audio/ogg';  // Альтернатива для Firefox
-                    }
-                    
-                    // Настройка записи
-                    mediaRecorder = new MediaRecorder(stream, { mimeType: mimeType });
+                    mediaRecorder = new MediaRecorder(stream);
                     audioChunks = [];
                     isRecording = true;
 
@@ -2276,63 +2276,47 @@
                     });
 
                     mediaRecorder.addEventListener('stop', function() {
-                        if (audioChunks.length === 0) { 
-                            console.error('[Voice] No audio data recorded');
-                            isRecording = false; 
-                            return; 
-                        }
-                        var voiceBlob = new Blob(audioChunks, { type: mimeType });
-                        var formData = new FormData();
-                        formData.append('file', voiceBlob, 'voice_' + Date.now() + '.' + (mimeType.split('/')[1] || 'webm'));
-                        formData.append('recipient_id', selectedUserId === 0 ? null : selectedUserId);
-                        formData.append('file_type', 'voice');
-                        
-                        console.log('[Voice] Sending voice message, size:', voiceBlob.size, 'type:', mimeType);
-                        
-                        // Исправление 5: Добавлена обработка ошибок отправки
-                        apiFetch('/api/send-file', { method: 'POST', body: formData })
-                            .then(function(r) { 
-                                if (!r.ok) throw new Error('HTTP ' + r.status);
-                                return r.json(); 
-                            })
-                            .then(function(result) {
-                                if (result.success) { 
-                                    console.log('[Voice] Message sent successfully');
-                                    loadMessages(); 
-                                    loadLastMessages(); 
-                                } else {
-                                    console.error('[Voice] Send failed:', result.message);
-                                    alert('Ошибка отправки голосового: ' + (result.message || 'Неизвестная ошибка'));
-                                }
-                            })
-                            .catch(function(err) {
-                                console.error('[Voice] Network error:', err);
-                                alert('Ошибка сети при отправке голосового: ' + err.message);
-                            });
-                        isRecording = false;
+                        setTimeout(function() {
+                            if (audioChunks.length === 0) { isRecording = false; return; }
+                            var voiceBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                            var formData = new FormData();
+                            formData.append('file', voiceBlob, 'voice_' + Date.now() + '.webm');
+                            formData.append('recipient_id', selectedUserId === 0 ? null : selectedUserId);
+                            formData.append('file_type', 'voice');
+                            apiFetch('/api/send-file', { method: 'POST', body: formData })
+                                .then(function(r) { return r.json(); })
+                                .then(function(result) {
+                                    if (result.success) { loadMessages(); loadLastMessages(); }
+                                });
+                            isRecording = false;
+                        }, 100);
                     });
 
                     mediaRecorder.start(100);
                     recordingStartTime = new Date();
-                    
-                    // Настройка аудиоанализатора для визуализации
+
                     audioContext = new (window.AudioContext || window.webkitAudioContext)();
                     analyser = audioContext.createAnalyser();
                     analyser.fftSize = 64;
                     microphone = audioContext.createMediaStreamSource(stream);
                     microphone.connect(analyser);
-                    
-                    // Показываем превью, скрываем поле ввода
-                    var preview = document.getElementById('voiceRecordPreview');
-                    var inputContainer = document.getElementById('messageInput').parentElement;
-                    if (preview) preview.style.display = 'flex';
-                    if (inputContainer) inputContainer.style.display = 'none';
 
-                    // Запускаем таймер и визуализацию
+                    // Скрываем поле ввода, показываем превью записи
+                    document.getElementById('messageInput').style.display = 'none';
+                    document.getElementById('voiceRecordPreview').style.display = 'flex';
+
+                    // Включаем кнопку отправки
+                    var sendBtn = document.getElementById('sendBtn');
+                    if (sendBtn) sendBtn.disabled = false;
+                    
+                    // Показываем кнопку удаления записи
+                    var cancelBtn = document.getElementById('cancelVoiceBtn');
+                    if (cancelBtn) cancelBtn.style.display = 'flex';
+
                     recordingInterval = setInterval(updateRecordingTime, 1000);
                     createWaveform();
                     updateWaveform();
-                    
+
                     var recordBtn = document.getElementById('voiceRecordBtn');
                     if (recordBtn) recordBtn.classList.add('recording');
                 })
@@ -2354,14 +2338,70 @@
                 var recordBtn = document.getElementById('voiceRecordBtn');
                 if (recordBtn) recordBtn.classList.remove('recording');
 
-                // Скрываем превью и показываем поле ввода
-                var preview = document.getElementById('voiceRecordPreview');
-                var inputContainer = document.getElementById('messageInput').parentElement;
-                if (preview) preview.style.display = 'none';
-                if (inputContainer) inputContainer.style.display = 'flex';
-                var waveform = document.getElementById('waveform');
-                if (waveform) waveform.innerHTML = '';
+                // Показываем поле ввода, скрываем превью
+                document.getElementById('messageInput').style.display = '';
+                document.getElementById('voiceRecordPreview').style.display = 'none';
+                document.getElementById('waveform').innerHTML = '';
+                waveformBars = [];
+                
+                // Выключаем кнопку отправки
+                var sendBtn = document.getElementById('sendBtn');
+                if (sendBtn) sendBtn.disabled = true;
+                
+                // Скрываем кнопку удаления записи
+                var cancelBtn = document.getElementById('cancelVoiceBtn');
+                if (cancelBtn) cancelBtn.style.display = 'none';
             }
+        }
+
+        function cancelVoiceRecording() {
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                mediaRecorder.stop();
+                mediaRecorder.stream.getTracks().forEach(function(track) { track.stop(); });
+            }
+            if (recordingInterval) { clearInterval(recordingInterval); recordingInterval = null; }
+            if (animationFrame) { cancelAnimationFrame(animationFrame); }
+            if (audioContext) { audioContext.close(); audioContext = null; }
+            
+            audioChunks = [];
+            isRecording = false;
+            
+            var recordBtn = document.getElementById('voiceRecordBtn');
+            if (recordBtn) recordBtn.classList.remove('recording');
+            
+            document.getElementById('messageInput').style.display = '';
+            document.getElementById('voiceRecordPreview').style.display = 'none';
+            document.getElementById('cancelVoiceBtn').style.display = 'none';
+            document.getElementById('waveform').innerHTML = '';
+            waveformBars = [];
+        }
+
+        function sendVoiceOrText() {
+            // Если идёт запись - отправляем голосовое
+            if (isRecording && audioChunks.length > 0) {
+                stopRecording();
+                setTimeout(function() {
+                    var voiceBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                    var formData = new FormData();
+                    formData.append('file', voiceBlob, 'voice_' + Date.now() + '.webm');
+                    formData.append('recipient_id', selectedUserId === 0 ? null : selectedUserId);
+                    formData.append('file_type', 'voice');
+                    apiFetch('/api/send-file', { method: 'POST', body: formData })
+                        .then(function(r) { return r.json(); })
+                        .then(function(result) {
+                            if (result.success) { loadMessages(); loadLastMessages(); }
+                        });
+                    audioChunks = [];
+                    isRecording = false;
+                    
+                    // Выключаем кнопку
+                    var sendBtn = document.getElementById('sendBtn');
+                    if (sendBtn) sendBtn.disabled = true;
+                }, 100);
+                return;
+            }
+            // Иначе отправляем текст
+            sendMessage();
         }
 
         function updateRecordingTime() {
@@ -2369,24 +2409,19 @@
             var diff = Math.floor((new Date() - recordingStartTime) / 1000);
             var minutes = Math.floor(diff / 60);
             var seconds = diff % 60;
-            var timeEl = document.getElementById('recordingTime');
-            if (timeEl) timeEl.textContent = minutes + ':' + (seconds < 10 ? '0' : '') + seconds;
         }
 
         function createWaveform() {
             var waveform = document.getElementById('waveform');
             if (!waveform) return;
             waveform.innerHTML = '';
-            // Создаём больше баров для красивой анимации
-            for (var i = 0; i < 40; i++) {
+            waveformBars = [];
+            for (var i = 0; i < maxBars; i++) {
                 var bar = document.createElement('div');
                 bar.className = 'waveform-bar';
-                bar.style.width = '3px';
                 bar.style.height = '8px';
-                bar.style.background = 'var(--primary)';
-                bar.style.borderRadius = '2px';
-                bar.style.transition = 'height 0.05s ease';
                 waveform.appendChild(bar);
+                waveformBars.push(bar);
             }
         }
 
@@ -2397,13 +2432,35 @@
             var dataArray = new Uint8Array(bufferLength);
             analyser.getByteFrequencyData(dataArray);
 
-            var bars = document.querySelectorAll('.waveform-bar');
-            for (var i = 0; i < bars.length && i < bufferLength; i++) {
-                var volume = dataArray[i];
-                var minHeight = 8;
-                var maxHeight = 35;
-                var height = minHeight + (volume / 255) * (maxHeight - minHeight);
-                bars[i].style.height = height + 'px';
+            // Сдвигаем все бары влево
+            for (var i = maxBars - 1; i > 0; i--) {
+                var prevHeight = waveformBars[i - 1].style.height;
+                var prevOpacity = waveformBars[i - 1].style.opacity || '1';
+                waveformBars[i].style.height = prevHeight;
+                waveformBars[i].style.opacity = prevOpacity;
+            }
+
+            // Первый бар - текущая громкость
+            var volume = dataArray[0];
+            var minHeight = 8;
+            var maxHeight = 40;
+            var height = minHeight + (volume / 255) * (maxHeight - minHeight);
+            waveformBars[0].style.height = height + 'px';
+            waveformBars[0].style.opacity = '1';
+
+            // Проверяем, исчез ли последний бар
+            if (waveformBars[maxBars - 1].style.opacity === '0') {
+                waveformBars[maxBars - 1].style.height = '8px';
+                waveformBars[maxBars - 1].style.opacity = '1';
+            }
+
+            // Запускаем анимацию исчезновения для всех баров
+            for (var i = 0; i < maxBars; i++) {
+                var currentOpacity = parseFloat(waveformBars[i].style.opacity || '1');
+                if (currentOpacity > 0) {
+                    var newOpacity = currentOpacity - 0.02;
+                    waveformBars[i].style.opacity = Math.max(0, newOpacity);
+                }
             }
 
             animationFrame = requestAnimationFrame(updateWaveform);
@@ -2429,36 +2486,12 @@
             } else if (msg.file_type === 'file') {
                 bubbleContent = '<a href="' + msg.content + '" download class="file-attachment">📄 Файл</a>';
             } else if (msg.file_type === 'voice') {
-                // Исправление 4: Поддержка и base64, и URL из Cloudinary
-                var audioSrc = msg.content || '';
-                var audioType = 'audio/mp4'; // По умолчанию MP4 (совместим со всеми браузерами)
-                
-                // Определяем тип контента
-                if (audioSrc.startsWith('data:')) {
-                    // Base64 данные
-                    var mimeMatch = audioSrc.match(/^data:([^;]+);base64,/);
-                    if (mimeMatch) {
-                        audioType = mimeMatch[1];
-                    }
-                } else if (audioSrc.includes('cloudinary.com')) {
-                    // URL из Cloudinary - определяем тип по расширению
-                    if (audioSrc.includes('.webm')) {
-                        audioType = 'audio/webm';
-                    } else if (audioSrc.includes('.mp3')) {
-                        audioType = 'audio/mpeg';
-                    } else if (audioSrc.includes('.mp4') || audioSrc.includes('.m4a')) {
-                        audioType = 'audio/mp4';
-                    }
-                }
-                
-                // Создаём аудио элемент с обработкой ошибок
-                bubbleContent = '<audio controls style="max-width: 280px;" controlsList="nodownload" onerror="console.error(\'Audio load error:\', this.error)">' +
-                    '<source src="' + audioSrc + '" type="' + audioType + '">' +
-                    '<span style="color: var(--text-secondary); font-size: 12px;">⚠️ Аудио не загружено</span>' +
-                    '</audio>';
+                bubbleContent = '<audio controls style="max-width: 280px;"><source src="' + msg.content + '" type="audio/webm"></audio>';
             } else {
                 bubbleContent = escapeHtml(msg.content);
             }
+
+            var moscowTime = msg.created_at;
             if (msg.created_at && typeof msg.created_at === 'string' && msg.created_at.includes(':')) {
                 var parts = msg.created_at.split(':');
                 var hours = parseInt(parts[0]) + 3;
@@ -2467,14 +2500,82 @@
                 moscowTime = (hours < 10 ? '0' + hours : hours) + ':' + minutes;
             }
 
-            var html = '<div class="message ' + (msg.is_mine ? 'me' : 'other') + '" data-id="' + msg.id + '">' +
+            var html = '<div class="message ' + (msg.is_mine ? 'me' : 'other') + '" data-id="' + msg.id + '" style="position: relative;">' +
                 '<div class="message-bubble">' + bubbleContent + '</div>' +
                 '<div class="message-time">' + escapeHtml(msg.sender) + ' • ' + moscowTime + statusIcon + '</div>' +
+                '<button class="message-menu-btn" onclick="showMessageMenu(event, ' + msg.id + ', ' + msg.is_mine + ')" title="Ещё">' +
+                '<svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>' +
+                '</button>' +
                 '</div>';
 
             container.insertAdjacentHTML('beforeend', html);
             scrollToBottom();
         }
+
+        function showMessageMenu(e, msgId, isMine) {
+            e.stopPropagation();
+            
+            // Закрываем предыдущее меню
+            var existingMenu = document.querySelector('.message-context-menu');
+            if (existingMenu) existingMenu.remove();
+            
+            // Создаём меню
+            var menu = document.createElement('div');
+            menu.className = 'message-context-menu';
+            menu.style.left = e.pageX + 'px';
+            menu.style.top = e.pageY + 'px';
+            
+            var deleteIcon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
+            
+            menu.innerHTML = '<button class="delete-btn" onclick="deleteMessage(' + msgId + ')">' + deleteIcon + ' Удалить</button>';
+            
+            document.body.appendChild(menu);
+            
+            // Позиционируем меню чтобы не вылезало за экран
+            var rect = menu.getBoundingClientRect();
+            if (rect.right > window.innerWidth) {
+                menu.style.left = (e.pageX - rect.width) + 'px';
+            }
+            if (rect.bottom > window.innerHeight) {
+                menu.style.top = (e.pageY - rect.height) + 'px';
+            }
+        }
+
+        function closeMenu() {
+            var menu = document.querySelector('.message-context-menu');
+            if (menu) menu.remove();
+        }
+
+        function deleteMessage(msgId) {
+            closeMenu();
+            if (!confirm('Удалить сообщение?')) return;
+            
+            apiFetch('/api/delete-message', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ message_id: msgId })
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(result) {
+                if (result.success) {
+                    var msgEl = document.querySelector('.message[data-id="' + msgId + '"]');
+                    if (msgEl) {
+                        msgEl.style.transition = 'all 0.3s';
+                        msgEl.style.opacity = '0';
+                        msgEl.style.transform = 'scale(0.9)';
+                        setTimeout(function() { msgEl.remove(); }, 300);
+                    }
+                } else {
+                    alert('Ошибка: ' + (result.message || 'Не удалось удалить'));
+                }
+            })
+            .catch(function(err) {
+                alert('Ошибка: ' + err.message);
+            });
+        }
+
+        // Закрытие меню при клике вне
+        document.addEventListener('click', closeMenu);
 
         function updateMessageStatus(msgId, status) {
             var msgEl = document.querySelector('.message[data-id="' + msgId + '"]');
@@ -2695,28 +2796,15 @@
 
             setTimeout(function() { scrollToBottom(); }, 100);
 
-            // Очищаем старые интервалы
             if (onlineInterval) clearInterval(onlineInterval);
-            if (lastMessagesInterval) clearInterval(lastMessagesInterval);
-            if (messagesInterval) clearInterval(messagesInterval);
-
-            // Обновляем статус онлайн каждую секунду
             onlineInterval = setInterval(function() {
                 updateOnlineStatus();
-                loadUsers(); // Обновляем список пользователей (статусы "в сети")
-            }, 1000);
+            }, 10000);
 
-            // Обновляем последние сообщения каждую секунду
+            if (lastMessagesInterval) clearInterval(lastMessagesInterval);
             lastMessagesInterval = setInterval(function() {
                 loadLastMessages();
-            }, 1000);
-
-            // Обновляем текущие сообщения каждую секунду (если выбран чат)
-            messagesInterval = setInterval(function() {
-                if (selectedUserId !== null) {
-                    loadMessages();
-                }
-            }, 1000);
+            }, 10000);
 
             initTabs();
             showFooter();
@@ -2733,23 +2821,8 @@
 
         function updateOnlineStatus() {
             apiFetch('/api/heartbeat', { method: 'POST' })
-                .then(function(r) {
-                    if (r.ok) {
-                        // Обновляем статус "В сети" в шапке
-                        var headerStatus = document.querySelector('.header .user-info span');
-                        if (headerStatus) {
-                            headerStatus.textContent = ' В сети';
-                            headerStatus.style.color = 'rgb(29, 180, 24)';
-                        }
-                    }
-                })
                 .catch(function(err) {
                     console.error('Ошибка обновления статуса:', err);
-                    var headerStatus = document.querySelector('.header .user-info span');
-                    if (headerStatus) {
-                        headerStatus.textContent = ' Не в сети';
-                        headerStatus.style.color = 'var(--text-secondary)';
-                    }
                 });
         }
 
@@ -3001,7 +3074,7 @@
                     }
                     var contentType = r.headers.get('content-type');
                     if (!contentType || !contentType.includes('application/json')) {
-                        throw new Error('Сервер вернул не JSON');
+                        throw new Error('Серве�� вернул не JSON');
                     }
                     return r.json();
                 })
@@ -3022,7 +3095,7 @@
 
 
         function clearMessages() {
-            if (!confirm('Вы уверены, что хотите удалить все свои сообщения? Это действие нельзя отменить.')) {
+            if (!confirm('Вы уверены, что хотите удалить все свои сообщения? Это действие нель��я отменить.')) {
                 return;
             }
 
@@ -3052,7 +3125,7 @@
                 .then(function(r) { return r.json(); })
                 .then(function(result) {
                     if (result.success) {
-                        alert('Ваш успешно аккаунт удален.');
+                        alert('Ваш аккаунт удален.');
                         location.reload();
                     } else {
                         alert('Ошибка: ' + (result.message || 'Неизвестная ошибка'));
