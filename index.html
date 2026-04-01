@@ -535,6 +535,13 @@
             0%, 100% { opacity: 1; transform: scale(1); }
             50% { opacity: 0.5; transform: scale(1.2); }
         }
+        .waveform-bar {
+            width: 4px;
+            background: var(--primary);
+            border-radius: 2px;
+            flex-shrink: 0;
+            transition: height 0.05s ease;
+        }
         .file-preview {
             display: flex;
             align-items: center;
@@ -979,7 +986,7 @@
                             <div style="display: flex; align-items: center; gap: 12px; flex: 1;">
                                 <span style="width: 12px; height: 12px; background: #ef4444; border-radius: 50%; animation: pulse 1s infinite;"></span>
                                 <span id="recordingTime" style="font-size: 14px; font-weight: 500; min-width: 40px;">0:00</span>
-                                <div id="waveform" style="flex: 1; height: 40px; display: flex; align-items: center; gap: 3px;"></div>
+                                <div id="waveform" style="flex: 1; height: 40px; display: flex; align-items: center; gap: 2px; overflow: hidden;"></div>
                             </div>
                         </div>
                         <div style="display: flex; gap: 12px; align-items: center;">
@@ -1468,7 +1475,11 @@
                 if (!user.is_online && lastMessagesMap[user.id]) {
                     var lastMsg = lastMessagesMap[user.id], statusIcon = '';
                     if (lastMsg.is_mine) statusIcon = lastMsg.status === 'read' || lastMsg.status === 'delivered' ? '✓✓' : lastMsg.status === 'sent' ? '✓' : lastMsg.status === 'sending' ? '⏳' : '';
-                    var preview = lastMsg.file_type === 'image' ? '📷 Фото' : lastMsg.file_type === 'file' ? '📄 Файл' : escapeHtml(lastMsg.content);
+                    var preview = '';
+                    if (lastMsg.file_type === 'image') preview = '📷 Фото';
+                    else if (lastMsg.file_type === 'file') preview = '📄 Файл';
+                    else if (lastMsg.file_type === 'voice') preview = '🎤 Голосовое';
+                    else preview = escapeHtml(lastMsg.content);
                     if (statusIcon) lastMessageHtml = '<div class="user-last-message"><span class="status-icon">' + statusIcon + '</span>' + preview + '</div>';
                 }
                 var displayName = escapeHtml(user.username);
@@ -1735,12 +1746,9 @@
                 })
                 .then(function(data) {
                     console.log('[API] Загружено сообщений:', data.length);
-                    data.forEach(function(msg) {
-                        console.log('[API] Сообщение id=' + msg.id + ', file_type=' + msg.file_type + ', content=' + (msg.content ? msg.content.substring(0, 80) : 'null'));
-                    });
                     messages = data;
                     renderMessages();
-
+                    
                     if (data.length > 0) {
                         saveMessagesToCache(data, userId).catch(console.error);
                     }
@@ -1909,7 +1917,7 @@
                 messagesContainer.addEventListener('scroll', function() {
                     var btn = document.getElementById('scrollToBottomBtn');
                     var isAtBottom = messagesContainer.scrollHeight - messagesContainer.scrollTop - messagesContainer.clientHeight < 50;
-
+                    
                     if (!isAtBottom) {
                         btn.style.display = 'flex';
                         btn.style.alignItems = 'center';
@@ -2169,7 +2177,6 @@
             .catch(function(err) { alert('Ошибка: ' + err.message); btn.disabled = false; });
         }
 
-        // Переменные для записи голоса
         var mediaRecorder = null;
         var audioChunks = [];
         var recordingInterval = null;
@@ -2177,8 +2184,9 @@
         var isRecording = false;
         var audioContext = null;
         var analyser = null;
-        var microphone = null;
         var animationFrame = null;
+        var waveformBars = [];
+        var maxBars = 50;
 
         function startRecording(e) {
             if (e) { e.preventDefault(); e.stopPropagation(); }
@@ -2190,7 +2198,6 @@
 
             navigator.mediaDevices.getUserMedia({ audio: true })
                 .then(function(stream) {
-                    // Настройка записи
                     mediaRecorder = new MediaRecorder(stream);
                     audioChunks = [];
                     isRecording = true;
@@ -2200,39 +2207,38 @@
                     });
 
                     mediaRecorder.addEventListener('stop', function() {
-                        if (audioChunks.length === 0) { isRecording = false; return; }
-                        var voiceBlob = new Blob(audioChunks, { type: 'audio/webm' });
-                        var formData = new FormData();
-                        formData.append('file', voiceBlob, 'voice_' + Date.now() + '.webm');
-                        formData.append('recipient_id', selectedUserId === 0 ? null : selectedUserId);
-                        formData.append('file_type', 'voice');
-                        apiFetch('/api/send-file', { method: 'POST', body: formData })
-                            .then(function(r) { return r.json(); })
-                            .then(function(result) {
-                                if (result.success) { loadMessages(); loadLastMessages(); }
-                            });
-                        isRecording = false;
+                        setTimeout(function() {
+                            if (audioChunks.length === 0) { isRecording = false; return; }
+                            var voiceBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                            var formData = new FormData();
+                            formData.append('file', voiceBlob, 'voice_' + Date.now() + '.webm');
+                            formData.append('recipient_id', selectedUserId === 0 ? null : selectedUserId);
+                            formData.append('file_type', 'voice');
+                            apiFetch('/api/send-file', { method: 'POST', body: formData })
+                                .then(function(r) { return r.json(); })
+                                .then(function(result) {
+                                    if (result.success) { loadMessages(); loadLastMessages(); }
+                                });
+                            isRecording = false;
+                        }, 100);
                     });
 
                     mediaRecorder.start(100);
                     recordingStartTime = new Date();
-                    
-                    // Настройка аудиоанализатора для визуализации
+
                     audioContext = new (window.AudioContext || window.webkitAudioContext)();
                     analyser = audioContext.createAnalyser();
                     analyser.fftSize = 64;
                     microphone = audioContext.createMediaStreamSource(stream);
                     microphone.connect(analyser);
-                    
-                    // Показываем превью, скрываем поле ввода
+
                     document.getElementById('voiceRecordPreview').style.display = 'flex';
                     document.getElementById('messageInput').parentElement.style.display = 'none';
-                    
-                    // Запускаем таймер и визуализацию
+
                     recordingInterval = setInterval(updateRecordingTime, 1000);
                     createWaveform();
                     updateWaveform();
-                    
+
                     var recordBtn = document.getElementById('voiceRecordBtn');
                     if (recordBtn) recordBtn.classList.add('recording');
                 })
@@ -2253,11 +2259,11 @@
                 if (audioContext) { audioContext.close(); audioContext = null; }
                 var recordBtn = document.getElementById('voiceRecordBtn');
                 if (recordBtn) recordBtn.classList.remove('recording');
-                
-                // Скрываем превью, показываем поле ввода
+
                 document.getElementById('voiceRecordPreview').style.display = 'none';
                 document.getElementById('messageInput').parentElement.style.display = 'flex';
                 document.getElementById('waveform').innerHTML = '';
+                waveformBars = [];
             }
         }
 
@@ -2274,34 +2280,36 @@
             var waveform = document.getElementById('waveform');
             if (!waveform) return;
             waveform.innerHTML = '';
-            for (var i = 0; i < 30; i++) {
+            waveformBars = [];
+            for (var i = 0; i < maxBars; i++) {
                 var bar = document.createElement('div');
                 bar.className = 'waveform-bar';
-                bar.style.width = '4px';
                 bar.style.height = '8px';
-                bar.style.background = 'var(--primary)';
-                bar.style.borderRadius = '2px';
-                bar.style.transition = 'height 0.1s ease';
                 waveform.appendChild(bar);
+                waveformBars.push(bar);
             }
         }
 
         function updateWaveform() {
             if (!analyser || !isRecording) return;
-            
+
             var bufferLength = analyser.frequencyBinCount;
             var dataArray = new Uint8Array(bufferLength);
             analyser.getByteFrequencyData(dataArray);
-            
-            var bars = document.querySelectorAll('.waveform-bar');
-            for (var i = 0; i < bars.length && i < bufferLength; i++) {
-                var volume = dataArray[i];
-                var minHeight = 8;
-                var maxHeight = 40;
-                var height = minHeight + (volume / 255) * (maxHeight - minHeight);
-                bars[i].style.height = height + 'px';
+
+            // Сдвигаем все бары влево
+            for (var i = maxBars - 1; i > 0; i--) {
+                var prevHeight = waveformBars[i - 1].style.height;
+                waveformBars[i].style.height = prevHeight;
             }
-            
+
+            // Первый бар - текущая громкость
+            var volume = dataArray[0];
+            var minHeight = 8;
+            var maxHeight = 40;
+            var height = minHeight + (volume / 255) * (maxHeight - minHeight);
+            waveformBars[0].style.height = height + 'px';
+
             animationFrame = requestAnimationFrame(updateWaveform);
         }
 
@@ -2329,6 +2337,8 @@
             } else {
                 bubbleContent = escapeHtml(msg.content);
             }
+
+            var moscowTime = msg.created_at;
             if (msg.created_at && typeof msg.created_at === 'string' && msg.created_at.includes(':')) {
                 var parts = msg.created_at.split(':');
                 var hours = parseInt(parts[0]) + 3;
@@ -2843,7 +2853,7 @@
                     }
                     var contentType = r.headers.get('content-type');
                     if (!contentType || !contentType.includes('application/json')) {
-                        throw new Error('Сервер вернул не JSON');
+                        throw new Error('Серве�� вернул не JSON');
                     }
                     return r.json();
                 })
@@ -2864,7 +2874,7 @@
 
 
         function clearMessages() {
-            if (!confirm('Вы уверены, что хотите удалить все свои сообщения? Это действие нельзя отменить.')) {
+            if (!confirm('Вы уверены, что хотите удалить все свои сообщения? Это действие нель��я отменить.')) {
                 return;
             }
 
@@ -3179,4 +3189,3 @@
     </script>
 </body>
 </html>
-style="color: rgb(29, 180, 24);"
