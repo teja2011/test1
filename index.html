@@ -2220,54 +2220,79 @@
         var recordingInterval = null;
         var recordingStartTime = null;
         var voiceBlob = null;
+        var isRecording = false;
 
         function startRecording(e) {
             if (e) { e.preventDefault(); e.stopPropagation(); }
-            
+
             // Проверка: HTTPS или localhost
             var isSecure = window.isSecureContext || window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
             if (!isSecure) {
+                console.log('[Voice] Небезопасное соединение, запись невозможна');
                 alert('Для записи голоса требуется HTTPS. Откройте сайт по защищённому соединению.\n\nДля локальной тестирования используйте http://localhost');
                 return;
             }
-            
+
             if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                console.log('[Voice] getUserMedia не поддерживается');
                 alert('Ваш браузер не поддерживает запись голоса. Используйте Chrome, Firefox, Edge или Safari.');
                 return;
             }
+            
+            if (isRecording) {
+                console.log('[Voice] Уже идёт запись');
+                return;
+            }
 
+            console.log('[Voice] Запрашиваем доступ к микрофону...');
             navigator.mediaDevices.getUserMedia({ audio: true })
                 .then(function(stream) {
+                    console.log('[Voice] Доступ получен, создаём MediaRecorder');
                     mediaRecorder = new MediaRecorder(stream);
                     audioChunks = [];
+                    voiceBlob = null;
+                    isRecording = true;
 
                     mediaRecorder.addEventListener('dataavailable', function(event) {
-                        audioChunks.push(event.data);
+                        console.log('[Voice] Получены данные:', event.data.size, 'байт');
+                        if (event.data.size > 0) {
+                            audioChunks.push(event.data);
+                        }
                     });
 
                     mediaRecorder.addEventListener('stop', function() {
+                        console.log('[Voice] Запись остановлена, создаём blob из', audioChunks.length, 'кусков');
+                        if (audioChunks.length === 0) {
+                            console.error('[Voice] Нет аудио данных!');
+                            alert('Аудио не записано. Попробуйте снова.');
+                            isRecording = false;
+                            return;
+                        }
                         voiceBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                        console.log('[Voice] Blob создан, размер:', voiceBlob.size, 'байт');
+                        isRecording = false;
                     });
 
-                    mediaRecorder.start();
+                    mediaRecorder.start(100); // Собираем данные каждые 100мс
+                    console.log('[Voice] Запись началась');
                     recordingStartTime = new Date();
-                    
+
                     // Показываем превью записи
                     var preview = document.getElementById('voiceRecordPreview');
                     preview.style.display = 'flex';
-                    
+
                     // Запускаем таймер
                     recordingInterval = setInterval(updateRecordingTime, 1000);
-                    
+
                     // Создаём визуализацию волны
                     createWaveform();
-                    
+
                     // Блокируем кнопку записи
                     var recordBtn = document.getElementById('voiceRecordBtn');
                     recordBtn.style.color = '#ef4444';
                 })
                 .catch(function(err) {
-                    console.error('Ошибка записи:', err);
+                    console.error('[Voice] Ошибка записи:', err.name, err.message);
                     var errorMsg = 'Не удалось получить доступ к микрофону: ' + err.message;
                     if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
                         errorMsg = '❌ Доступ к микрофону запрещён.\n\nКак разрешить:\n1. Нажмите на значок замка 🔒 в адресной строке\n2. Выберите "Настройки сайта" или "Разрешения"\n3. Включите доступ к микрофону\n4. Обновите страницу';
@@ -2277,25 +2302,37 @@
                         errorMsg = 'Микрофон занят другим приложением. Закройте другие программы и попробуйте снова.';
                     }
                     alert(errorMsg);
+                    isRecording = false;
                 });
         }
 
         function stopRecording(e) {
             if (e) { e.preventDefault(); e.stopPropagation(); }
-            
+
+            if (!isRecording) {
+                console.log('[Voice] Запись не идёт');
+                return;
+            }
+
             if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                console.log('[Voice] Останавливаем запись, состояние:', mediaRecorder.state);
                 mediaRecorder.stop();
-                mediaRecorder.stream.getTracks().forEach(function(track) { track.stop(); });
-                
+                mediaRecorder.stream.getTracks().forEach(function(track) { 
+                    console.log('[Voice] Останавливаем трек:', track.kind);
+                    track.stop(); 
+                });
+
                 // Останавливаем таймер
                 if (recordingInterval) {
                     clearInterval(recordingInterval);
                     recordingInterval = null;
                 }
-                
+
                 // Возвращаем цвет кнопки
                 var recordBtn = document.getElementById('voiceRecordBtn');
                 recordBtn.style.color = '';
+            } else {
+                console.log('[Voice] MediaRecorder не активен:', mediaRecorder ? mediaRecorder.state : 'null');
             }
         }
 
@@ -2341,8 +2378,11 @@
         }
 
         function sendVoiceMessage() {
-            if (!voiceBlob) {
-                alert('Ошибка: аудио не записано');
+            console.log('[Voice] Отправка, voiceBlob:', voiceBlob ? voiceBlob.size : 'null');
+            
+            if (!voiceBlob || voiceBlob.size === 0) {
+                console.error('[Voice] Blob пустой или не создан');
+                alert('Ошибка: аудио не записано. Попробуйте записать снова.');
                 return;
             }
 
@@ -2354,9 +2394,15 @@
             var preview = document.getElementById('voiceRecordPreview');
             preview.style.display = 'none';
 
+            console.log('[Voice] Отправляем файл:', voiceBlob.size, 'байт');
             apiFetch('/api/send-file', { method: 'POST', body: formData })
-                .then(function(r) { if (!r.ok) throw new Error('Ошибка: ' + r.status); return r.json(); })
+                .then(function(r) { 
+                    console.log('[Voice] Ответ сервера:', r.status);
+                    if (!r.ok) throw new Error('Ошибка: ' + r.status); 
+                    return r.json(); 
+                })
                 .then(function(result) {
+                    console.log('[Voice] Результат:', result);
                     if (result.success) {
                         clearFilePreview();
                         loadMessages();
@@ -2366,6 +2412,7 @@
                     }
                 })
                 .catch(function(err) {
+                    console.error('[Voice] Ошибка отправки:', err);
                     alert('Ошибка: ' + err.message);
                 });
 
@@ -2948,7 +2995,7 @@
                     }
                     var contentType = r.headers.get('content-type');
                     if (!contentType || !contentType.includes('application/json')) {
-                        throw new Error('Серве�� вернул не JSON');
+                        throw new Error('Сервер вернул не JSON');
                     }
                     return r.json();
                 })
@@ -2969,7 +3016,7 @@
 
 
         function clearMessages() {
-            if (!confirm('Вы уверены, что хотите удалить все свои сообщения? Это действие нель��я отменить.')) {
+            if (!confirm('Вы уверены, что хотите удалить все свои сообщения? Это действие нельзя отменить.')) {
                 return;
             }
 
