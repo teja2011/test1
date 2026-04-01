@@ -2270,6 +2270,7 @@
         var voiceBlob = null;
         var isRecording = false;
         var isRecordingStopped = false; // Флаг: запись остановлена, blob создаётся
+        var minRecordingTime = 500; // Минимальное время записи 500мс
 
         function startRecording(e) {
             if (e) { e.preventDefault(); e.stopPropagation(); }
@@ -2311,18 +2312,21 @@
                     });
 
                     mediaRecorder.addEventListener('stop', function() {
-                        console.log('[Voice] Запись остановлена, создаём blob из', audioChunks.length, 'кусков');
-                        if (audioChunks.length === 0) {
-                            console.error('[Voice] Нет аудио данных!');
-                            alert('Аудио не записано. Попробуйте снова.');
+                        console.log('[Voice] Событие stop, audioChunks.length:', audioChunks.length);
+                        // Даём время на создание blob
+                        setTimeout(function() {
+                            if (audioChunks.length === 0) {
+                                console.error('[Voice] Нет аудио данных!');
+                                alert('Слишком короткая запись. Удерживайте кнопку минимум 1 секунду.');
+                                isRecording = false;
+                                isRecordingStopped = false;
+                                return;
+                            }
+                            voiceBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                            console.log('[Voice] Blob создан, размер:', voiceBlob.size, 'байт');
                             isRecording = false;
-                            isRecordingStopped = false;
-                            return;
-                        }
-                        voiceBlob = new Blob(audioChunks, { type: 'audio/webm' });
-                        console.log('[Voice] Blob создан, размер:', voiceBlob.size, 'байт');
-                        isRecording = false;
-                        isRecordingStopped = true;
+                            isRecordingStopped = true;
+                        }, 100);
                     });
 
                     mediaRecorder.start(100); // Собираем данные каждые 100мс
@@ -2365,6 +2369,10 @@
                 console.log('[Voice] Запись не идёт');
                 return;
             }
+            
+            // Проверяем, сколько времени длилась запись
+            var recordingDuration = Date.now() - recordingStartTime.getTime();
+            console.log('[Voice] Запись длилась:', recordingDuration, 'мс');
 
             if (mediaRecorder && mediaRecorder.state !== 'inactive') {
                 console.log('[Voice] Останавливаем запись, состояние:', mediaRecorder.state);
@@ -2384,10 +2392,14 @@
                 var recordBtn = document.getElementById('voiceRecordBtn');
                 if (recordBtn) recordBtn.classList.remove('recording');
                 
-                // Ждём немного для создания blob
-                setTimeout(function() {
-                    console.log('[Voice] Проверка blob после остановки:', voiceBlob ? voiceBlob.size : 'null');
-                }, 500);
+                // Если запись была слишком короткой, отменяем её
+                if (recordingDuration < minRecordingTime) {
+                    console.log('[Voice] Запись слишком короткая, отмена');
+                    setTimeout(function() {
+                        cancelRecording();
+                        alert('Удерживайте кнопку минимум 1 секунду для записи');
+                    }, 200);
+                }
             } else {
                 console.log('[Voice] MediaRecorder не активен:', mediaRecorder ? mediaRecorder.state : 'null');
             }
