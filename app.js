@@ -320,9 +320,17 @@ function renderMessageItem(msg, index) {
         // Голосовые сообщения обрабатываются отдельно в HTML
         bubbleContent = `<div class="voice-message">🎤 Голосовое сообщение (${msg.duration || '0:00'})</div>`;
     } else if (msg.file_type === 'video_circle') {
-        bubbleContent = `<div class="video-circle-message" style="width: 150px; height: 150px; border-radius: 50%; overflow: hidden; background: #000;">
-            <video src="${msg.content}" autoplay loop muted playsinline style="width: 100%; height: 100%; object-fit: cover;"></video>
-            <span class="video-duration" style="position: absolute; bottom: 8px; right: 8px; background: rgba(0,0,0,0.6); color: white; padding: 2px 6px; border-radius: 8px; font-size: 11px;">${msg.duration || '0:00'}</span>
+        bubbleContent = `<div class="video-circle-message" data-msg-id="${msg.id}" onclick="toggleVideoCirclePlayback(this)">
+            <video src="${msg.content}" muted playsinline preload="metadata" onloadeddata="captureFirstFrame(this);"></video>
+            <div class="video-play-overlay">
+                <div class="video-play-btn">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="#000"><path d="M8 5v14l11-7z"/></svg>
+                </div>
+                <div class="video-pause-icon">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="#000"><path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/></svg>
+                </div>
+            </div>
+            <span class="video-duration">${msg.duration || '0:00'}</span>
         </div>`;
     } else {
         bubbleContent = escapeHtml(msg.content);
