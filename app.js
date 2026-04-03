@@ -320,17 +320,19 @@ function renderMessageItem(msg, index) {
         // Голосовые сообщения обрабатываются отдельно в HTML
         bubbleContent = `<div class="voice-message">🎤 Голосовое сообщение (${msg.duration || '0:00'})</div>`;
     } else if (msg.file_type === 'video_circle') {
-        bubbleContent = `<div class="video-circle-message" data-msg-id="${msg.id}" onclick="toggleVideoCirclePlayback(this)">
-            <video src="${msg.content}" muted playsinline preload="metadata" onloadeddata="captureFirstFrame(this);"></video>
-            <div class="video-play-overlay">
-                <div class="video-play-btn">
-                    <svg width="28" height="28" viewBox="0 0 24 24" fill="#000"><path d="M8 5v14l11-7z"/></svg>
+        bubbleContent = `<div class="message-bubble video-bubble" style="padding: 4px; background: transparent;">
+            <div class="video-circle-message" data-msg-id="${msg.id}" onclick="toggleVideoCirclePlayback(this)">
+                <video src="${msg.content}" muted playsinline preload="metadata" onloadeddata="captureFirstFrame(this);"></video>
+                <div class="video-play-overlay">
+                    <div class="video-play-btn">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="#000"><path d="M8 5v14l11-7z"/></svg>
+                    </div>
+                    <div class="video-pause-icon">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="#000"><path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/></svg>
+                    </div>
                 </div>
-                <div class="video-pause-icon">
-                    <svg width="28" height="28" viewBox="0 0 24 24" fill="#000"><path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/></svg>
-                </div>
+                <span class="video-duration">${msg.duration || '0:00'}</span>
             </div>
-            <span class="video-duration">${msg.duration || '0:00'}</span>
         </div>`;
     } else {
         bubbleContent = escapeHtml(msg.content);
