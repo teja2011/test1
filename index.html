@@ -2771,6 +2771,7 @@
                 audio: true
             })
             .then(function(stream) {
+                console.log('[Video Circle] Stream obtained, tracks:', stream.getTracks().length);
                 videoStream = stream;
 
                 // Показываем превью в модальном окне
@@ -2779,28 +2780,41 @@
                 video.srcObject = stream;
                 modal.style.display = 'flex';
 
-                // Начинаем запись
-                var mimeType = 'video/webm';
-                if (MediaRecorder.isTypeSupported('video/mp4')) {
-                    mimeType = 'video/mp4';
-                } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp9')) {
-                    mimeType = 'video/webm;codecs=vp9';
-                } else if (MediaRecorder.isTypeSupported('video/webm')) {
-                    mimeType = 'video/webm';
+                // Определяем поддерживаемый формат
+                var mimeType = '';
+                var types = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'];
+                for (var i = 0; i < types.length; i++) {
+                    if (MediaRecorder.isTypeSupported(types[i])) {
+                        mimeType = types[i];
+                        console.log('[Video Circle] Selected mimeType:', mimeType);
+                        break;
+                    }
+                }
+                if (!mimeType) {
+                    console.log('[Video Circle] No supported mimeType found, using default');
                 }
 
-                videoRecorder = new MediaRecorder(stream, { mimeType: mimeType });
+                videoRecorder = new MediaRecorder(stream, { 
+                    mimeType: mimeType || undefined,
+                    videoBitsPerSecond: 2500000
+                });
                 videoChunks = [];
                 isVideoRecording = true;
                 videoRecordingStartTime = new Date();
 
                 videoRecorder.addEventListener('dataavailable', function(event) {
-                    if (event.data.size > 0) {
+                    console.log('[Video Circle] dataavailable, event.data:', event.data, 'size:', event.data.size);
+                    if (event.data && event.data.size > 0) {
                         videoChunks.push(event.data);
+                        console.log('[Video Circle] Chunk added, total:', videoChunks.length);
                     }
                 });
 
-                // Включаем кнопку отправки и делаем её видимой
+                videoRecorder.addEventListener('stop', function() {
+                    console.log('[Video Circle] stop event, chunks:', videoChunks.length, 'total size:', videoChunks.reduce(function(s, c) { return s + c.size; }, 0));
+                });
+
+                // Включаем кнопку отправки
                 var sendBtn = document.getElementById('sendBtn');
                 if (sendBtn) {
                     sendBtn.disabled = false;
@@ -2815,11 +2829,27 @@
                     videoBtn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="red" stroke="red" stroke-width="2"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>';
                 }
 
-                // Ограничиваем запись 60 секундами
-                videoRecorder.start(100);
+                // Запускаем запись с timeslice 1000ms
+                videoRecorder.start(1000);
+                console.log('[Video Circle] Recording started with timeslice=1000');
 
                 // Запускаем таймер
                 videoTimerInterval = setInterval(updateVideoTimer, 1000);
+
+                // Периодически собираем данные
+                var collectInterval = setInterval(function() {
+                    if (videoRecorder && videoRecorder.state === 'recording') {
+                        try {
+                            videoRecorder.requestData();
+                            console.log('[Video Circle] requestData called, state:', videoRecorder.state);
+                        } catch(e) {
+                            console.log('[Video Circle] requestData error:', e.message);
+                        }
+                    }
+                }, 2000);
+
+                // Сохраняем interval для очистки
+                videoRecorder._collectInterval = collectInterval;
 
                 // Автоматическая остановка через 60 секунд
                 setTimeout(function() {
@@ -2839,13 +2869,19 @@
             
             isVideoRecording = false;
 
-            if (videoRecorder && videoRecorder.state !== 'inactive') {
-                videoRecorder.stop();
-            }
-
             if (videoTimerInterval) {
                 clearInterval(videoTimerInterval);
                 videoTimerInterval = null;
+            }
+
+            // Очищаем collectInterval
+            if (videoRecorder && videoRecorder._collectInterval) {
+                clearInterval(videoRecorder._collectInterval);
+                videoRecorder._collectInterval = null;
+            }
+
+            if (videoRecorder && videoRecorder.state !== 'inactive') {
+                videoRecorder.stop();
             }
 
             // Возвращаем иконку камеры
@@ -2865,6 +2901,161 @@
             if (videoStream) {
                 videoStream.getTracks().forEach(function(track) { track.stop(); });
                 videoStream = null;
+            }
+        }
+
+        function doSendVideo() {
+            if (videoChunks.length === 0) {
+                alert('Ошибка записи видео: нет данных');
+                videoChunks = [];
+                var sendBtn = document.getElementById('sendBtn');
+                if (sendBtn) {
+                    sendBtn.disabled = true;
+                    sendBtn.style.opacity = '';
+                    sendBtn.style.zIndex = '';
+                }
+                return;
+            }
+
+            var totalSize = 0;
+            for (var i = 0; i < videoChunks.length; i++) {
+                totalSize += videoChunks[i].size;
+            }
+            console.log('[Video Circle] Sending, chunks:', videoChunks.length, 'total size:', totalSize);
+
+            var mimeType = 'video/webm';
+            try {
+                if (videoRecorder && videoRecorder.mimeType) {
+                    mimeType = videoRecorder.mimeType;
+                }
+            } catch(e) {}
+
+            console.log('[Video Circle] Using mimeType:', mimeType);
+
+            var videoBlob = new Blob(videoChunks, { type: mimeType });
+            console.log('[Video Circle] Blob created, size:', videoBlob.size, 'type:', videoBlob.type);
+
+            // Рассчитываем длительность
+            var duration = Math.floor((new Date() - videoRecordingStartTime) / 1000);
+            console.log('[Video Circle] Duration:', duration + 's');
+
+            // Конвертируем Blob в base64 и отправляем как JSON
+            var reader = new FileReader();
+            reader.addEventListener('loadend', function() {
+                var base64Data = reader.result; // data:video/webm;base64,...
+                console.log('[Video Circle] Base64 length:', base64Data.length);
+
+                var body = {
+                    content: base64Data,
+                    file_type: 'video_circle',
+                    duration: duration + 's',
+                    recipient_id: selectedUserId === 0 ? null : selectedUserId
+                };
+
+                console.log('[Video Circle] Sending as JSON, content length:', body.content.length);
+
+                apiFetch('/api/send-file', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                })
+                .then(function(r) {
+                    console.log('[Video Circle] Response status:', r.status);
+                    if (!r.ok) {
+                        return r.text().then(function(text) {
+                            console.error('[Video Circle] Response body:', text.substring(0, 500));
+                            throw new Error('HTTP ' + r.status + ': ' + text.substring(0, 200));
+                        });
+                    }
+                    return r.json();
+                })
+                .then(function(result) {
+                    console.log('[Video Circle] Result:', JSON.stringify(result));
+                    if (result.success) {
+                        console.log('[Video Circle] Sent successfully');
+                        loadMessages();
+                        loadLastMessages();
+                    } else {
+                        console.error('[Video Circle] Send failed:', result.message);
+                        alert('Ошибка отправки видео: ' + (result.message || 'Неизвестная ошибка'));
+                    }
+                })
+                .catch(function(err) {
+                    console.error('[Video Circle] Network error:', err);
+                    alert('Ошибка сети при отправке видео: ' + err.message);
+                });
+            });
+
+            reader.readAsDataURL(videoBlob);
+
+            // Очищаем
+            videoChunks = [];
+            videoRecordingStartTime = null;
+
+            var sendBtn = document.getElementById('sendBtn');
+            if (sendBtn) {
+                sendBtn.disabled = true;
+                sendBtn.style.opacity = '';
+                sendBtn.style.zIndex = '';
+            }
+        }
+
+        function sendVideoCircle() {
+            if (!videoRecorder) {
+                alert('Сначала запи видео');
+                return;
+            }
+
+            if (isVideoRecording) {
+                console.log('[Video Circle] Stopping recording...');
+                isVideoRecording = false;
+
+                if (videoTimerInterval) {
+                    clearInterval(videoTimerInterval);
+                    videoTimerInterval = null;
+                }
+
+                // Очищаем collectInterval
+                if (videoRecorder && videoRecorder._collectInterval) {
+                    clearInterval(videoRecorder._collectInterval);
+                    videoRecorder._collectInterval = null;
+                }
+
+                // Возвращаем иконку камеры
+                var videoBtn = document.getElementById('videoCircleBtn');
+                if (videoBtn) {
+                    videoBtn.classList.remove('recording');
+                    videoBtn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/></svg>';
+                }
+
+                // Скрываем модалку
+                var modal = document.getElementById('videoCircleModal');
+                modal.style.display = 'none';
+
+                var video = document.getElementById('videoPreview');
+                video.srcObject = null;
+
+                // Сначала останавливаем рекордер (это вызовет dataavailable с данными)
+                if (videoRecorder && videoRecorder.state !== 'inactive') {
+                    videoRecorder.stop();
+                    console.log('[Video Circle] Recorder.stop() called, waiting for data...');
+                }
+
+                // Только ПОСЛЕ этого останавливаем стрим и отправляем
+                setTimeout(function() {
+                    if (videoStream) {
+                        videoStream.getTracks().forEach(function(track) { track.stop(); });
+                        videoStream = null;
+                    }
+
+                    console.log('[Video Circle] Stream stopped, chunks:', videoChunks.length, 'total size:', videoChunks.reduce(function(s, c) { return s + c.size; }, 0));
+                    
+                    // Теперь отправляем
+                    doSendVideo();
+                }, 1000);
+            } else {
+                // Уже остановлено, сразу отправляем
+                doSendVideo();
             }
         }
 
@@ -2919,70 +3110,6 @@
                 sendBtn.style.opacity = '';
                 sendBtn.style.zIndex = '';
             }
-        }
-
-        function sendVideoCircle() {
-            if (!videoRecorder || videoChunks.length === 0) {
-                alert('Сначала запи видео');
-                return;
-            }
-
-            if (isVideoRecording) {
-                stopVideoRecording();
-            }
-
-            // Ждем немного чтобы все данные были собраны
-            setTimeout(function() {
-                if (videoChunks.length === 0) {
-                    alert('Ошибка записи видео');
-                    cancelVideoRecording();
-                    return;
-                }
-
-                var mimeType = videoRecorder.mimeType || 'video/webm';
-                var videoBlob = new Blob(videoChunks, { type: mimeType });
-
-                // Рассчитываем длительность
-                var duration = Math.floor((new Date() - videoRecordingStartTime) / 1000);
-
-                // Отправляем на сервер
-                var formData = new FormData();
-                formData.append('file', videoBlob, 'video_circle_' + Date.now() + '.webm');
-                formData.append('recipient_id', selectedUserId === 0 ? null : selectedUserId);
-                formData.append('file_type', 'video_circle');
-                formData.append('duration', duration + 's');
-
-                apiFetch('/api/send-file', { method: 'POST', body: formData })
-                    .then(function(r) {
-                        if (!r.ok) throw new Error('HTTP ' + r.status);
-                        return r.json();
-                    })
-                    .then(function(result) {
-                        if (result.success) {
-                            console.log('[Video Circle] Sent successfully');
-                            loadMessages();
-                            loadLastMessages();
-                        } else {
-                            console.error('[Video Circle] Send failed:', result.message);
-                            alert('Ошибка отправки видео: ' + (result.message || 'Неизвестная ошибка'));
-                        }
-                    })
-                    .catch(function(err) {
-                        console.error('[Video Circle] Network error:', err);
-                        alert('Ошибка сети при отправке видео: ' + err.message);
-                    });
-
-                // Очищаем
-                videoChunks = [];
-                videoRecordingStartTime = null;
-
-                var sendBtn = document.getElementById('sendBtn');
-                if (sendBtn) {
-                    sendBtn.disabled = true;
-                    sendBtn.style.opacity = '';
-                    sendBtn.style.zIndex = '';
-                }
-            }, 200);
         }
 
         function addMessageToDOM(msg) {
