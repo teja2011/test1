@@ -224,7 +224,11 @@ function renderUserItem(item, index) {
 
     if (item.isGeneral) {
         div.innerHTML = `
-            <div class="user-avatar" style="background: #6366f1; width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 20px; margin-right: 12px;">💬</div>
+            <div class="user-avatar" style="background: #6366f1; width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; margin-right: 12px;">
+                <svg viewBox="0 0 24 24" width="24" height="24" fill="white">
+                    <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/>
+                </svg>
+            </div>
             <div class="user-info-list">
                 <div class="user-name" style="font-weight: 600;">Общий чат</div>
                 <div class="user-status" style="color: var(--text-secondary); font-size: 12px;">Все пользователи</div>
@@ -312,6 +316,14 @@ function renderMessageItem(msg, index) {
         bubbleContent = `<img src="${msg.content}" class="chat-img" style="max-width: 200px; border-radius: 8px; cursor: pointer;" onclick="window.open(this.src)">`;
     } else if (msg.file_type === 'file') {
         bubbleContent = `<a href="${msg.content}" download class="file-attachment" style="color: var(--primary);">📄 Файл</a>`;
+    } else if (msg.file_type === 'voice') {
+        // Голосовые сообщения обрабатываются отдельно в HTML
+        bubbleContent = `<div class="voice-message">🎤 Голосовое сообщение (${msg.duration || '0:00'})</div>`;
+    } else if (msg.file_type === 'video_circle') {
+        bubbleContent = `<div class="video-circle-message" style="width: 150px; height: 150px; border-radius: 50%; overflow: hidden; background: #000;">
+            <video src="${msg.content}" autoplay loop muted playsinline style="width: 100%; height: 100%; object-fit: cover;"></video>
+            <span class="video-duration" style="position: absolute; bottom: 8px; right: 8px; background: rgba(0,0,0,0.6); color: white; padding: 2px 6px; border-radius: 8px; font-size: 11px;">${msg.duration || '0:00'}</span>
+        </div>`;
     } else {
         bubbleContent = escapeHtml(msg.content);
     }
