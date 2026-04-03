@@ -528,8 +528,11 @@ def api_send_file():
     # Гарантируем что таблицы существуют
     ensure_tables()
 
-    print(f"[send-file] DATABASE_URL present: {bool(DATABASE_URL)}")
-    print(f"[send-file] Tables initialized: {_tables_initialized}")
+    print(f"[send-file] === НАЧАЛО ЗАПРОСА ===")
+    print(f"[send-file] Content-Type: {request.content_type}")
+    print(f"[send-file] Data length: {len(request.get_data())}")
+    print(f"[send-file] Form keys: {list(request.form.keys())}")
+    print(f"[send-file] Files keys: {list(request.files.keys()) if request.files else 'EMPTY'}")
 
     user = get_current_user()
     if not user:
@@ -541,17 +544,36 @@ def api_send_file():
     file_type = request.form.get('file_type')  # 'image', 'file', 'voice', или 'video_circle'
     duration = request.form.get('duration')  # Длительность для видео-кружочков
 
-    print(f"[send-file] User: {user.id}, file_type: {file_type}, recipient: {recipient_id}")
-    print(f"[send-file] File data length: {len(file_data) if file_data else 0}")
+    # Поддержка JSON запроса (для видео-кружочков)
+    json_data = request.get_json(silent=True)
+    print(f"[send-file] JSON data: {json_data is not None}")
+    if json_data:
+        print(f"[send-file] JSON keys: {list(json_data.keys())}")
+        print(f"[send-file] JSON file_type: {json_data.get('file_type')}")
+        print(f"[send-file] JSON content length: {len(json_data.get('content', ''))}")
+        file_type = json_data.get('file_type', file_type)
+        file_data = json_data.get('content', file_data)
+        duration = json_data.get('duration', duration)
+        recipient_id = json_data.get('recipient_id', recipient_id)
+
+    print(f"[send-file] FINAL: file_type={file_type}, file_data_len={len(file_data) if file_data else 0}, duration={duration}")
+
+    # Проверяем файлы в запросе
+    if request.files:
+        for key, file in request.files.items():
+            print(f"[send-file] File key: {key}, filename: {file.filename}, size: {file.content_length}")
+    else:
+        print(f"[send-file] WARNING: request.files is empty!")
 
     db = get_db()
     try:
         content = None
         msg_duration = None
 
-        # Обработка видео-кружочков
+        # Обработка видео-кружочков из multipart/form-data
         if file_type == 'video_circle' and 'file' in request.files:
             file = request.files['file']
+            print(f"[send-file] Video circle file found: {file.filename}, size: {file.content_length}")
             if file and file.filename:
                 try:
                     # Загружаем видео на Cloudinary
@@ -584,7 +606,18 @@ def api_send_file():
                     msg_duration = duration if duration else '0s'
                     print(f"[send-file] Video circle converted to base64, length: {len(content)}")
             else:
+                print(f"[send-file] ERROR: file is None or no filename")
                 return jsonify({'success': False, 'message': 'No file uploaded'})
+        # Обработка видео-кружочков из JSON (base64)
+        elif file_type == 'video_circle' and file_data:
+            print(f"[send-file] Video circle base64 received, length: {len(file_data)}")
+            if not file_data.startswith('data:'):
+                # Определяем MIME-тип
+                mime_type = 'video/webm'
+                file_data = f'data:{mime_type};base64,{file_data}'
+            content = file_data
+            msg_duration = duration if duration else '0s'
+            print(f"[send-file] Video circle base64 stored, length: {len(content)}")
         # Обработка голосовых сообщений через multipart/form-data
         elif file_type == 'voice' and 'file' in request.files:
             file = request.files['file']
