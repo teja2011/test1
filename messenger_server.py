@@ -1,4 +1,3 @@
-# pyright: reportGeneralTypeIssues=none, reportArgumentType=none, reportAssignmentType=none, reportAttributeAccessIssue=none, reportOptionalMemberAccess=none
 from flask import Flask, render_template_string, request, jsonify, redirect, make_response, send_from_directory
 from werkzeug.utils import secure_filename
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey, or_, and_, text
