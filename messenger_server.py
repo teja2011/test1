@@ -451,7 +451,7 @@ def api_messages(recipient_id=None):
                 msg_status = 'sent'
 
             duration = None
-            if m.file_type == 'voice':
+            if m.file_type in ['voice', 'video_circle']:
                 # Получаем длительность из БД или ставим 0:00
                 if hasattr(m, 'duration') and m.duration:
                     # Конвертируем из формата "30s" в "0:30"
@@ -538,7 +538,8 @@ def api_send_file():
 
     recipient_id = request.form.get('recipient_id')
     file_data = request.form.get('file_data')  # Base64 данные
-    file_type = request.form.get('file_type')  # 'image', 'file', или 'voice'
+    file_type = request.form.get('file_type')  # 'image', 'file', 'voice', или 'video_circle'
+    duration = request.form.get('duration')  # Длительность для видео-кружочков
 
     print(f"[send-file] User: {user.id}, file_type: {file_type}, recipient: {recipient_id}")
     print(f"[send-file] File data length: {len(file_data) if file_data else 0}")
@@ -546,10 +547,46 @@ def api_send_file():
     db = get_db()
     try:
         content = None
-        duration = None
+        msg_duration = None
 
+        # Обработка видео-кружочков
+        if file_type == 'video_circle' and 'file' in request.files:
+            file = request.files['file']
+            if file and file.filename:
+                try:
+                    # Загружаем видео на Cloudinary
+                    upload_result = cloudinary_uploader.upload(
+                        file.stream,
+                        folder='jtesk/video_circles',
+                        resource_type='video',
+                        public_id=f'video_circle_{user.id}_{int(time.time())}',
+                        format='mp4'
+                    )
+                    content = upload_result['secure_url']
+                    # Получаем длительность из метаданных Cloudinary или из запроса
+                    if 'duration' in upload_result:
+                        msg_duration = str(int(upload_result['duration'])) + 's'
+                    elif duration:
+                        msg_duration = duration
+                    print(f"[send-file] Video circle uploaded to Cloudinary: {content}")
+                except Exception as cloudinary_error:
+                    print(f"[send-file] Cloudinary upload failed: {cloudinary_error}")
+                    print("[send-file] Using base64 fallback for video circle")
+
+                    # Читаем файл в base64
+                    file.seek(0)
+                    import base64
+                    file_bytes = file.read()
+                    file_base64 = base64.b64encode(file_bytes).decode('utf-8')
+
+                    mime_type = file.content_type if file.content_type else 'video/webm'
+                    content = f'data:{mime_type};base64,{file_base64}'
+                    msg_duration = duration if duration else '0s'
+                    print(f"[send-file] Video circle converted to base64, length: {len(content)}")
+            else:
+                return jsonify({'success': False, 'message': 'No file uploaded'})
         # Обработка голосовых сообщений через multipart/form-data
-        if file_type == 'voice' and 'file' in request.files:
+        elif file_type == 'voice' and 'file' in request.files:
             file = request.files['file']
             if file and file.filename:
                 try:
@@ -609,7 +646,7 @@ def api_send_file():
                 content=content,
                 file_type=file_type,
                 status='sent',
-                duration=duration
+                duration=msg_duration
             )
             db.add(msg)
             db.commit()
@@ -622,7 +659,7 @@ def api_send_file():
                 recipient_id=recipient_id if recipient_id else None,
                 content=content,
                 file_type=file_type,
-                duration=duration
+                duration=msg_duration
             )
             db.add(msg)
             db.commit()
@@ -633,7 +670,12 @@ def api_send_file():
             try:
                 recipient = db.query(User).filter_by(id=int(recipient_id)).first()
                 if recipient:
-                    notif_message = f"Голосовое сообщение от {user.username}" if file_type == 'voice' else f"Новое фото от {user.username}"
+                    if file_type == 'voice':
+                        notif_message = f"Голосовое сообщение от {user.username}"
+                    elif file_type == 'video_circle':
+                        notif_message = f"Видео-кружочек от {user.username}"
+                    else:
+                        notif_message = f"Новое фото от {user.username}"
                     create_notification(
                         db=db,
                         user_id=int(recipient_id),
@@ -923,7 +965,7 @@ def api_last_messages():
             ).count()
 
             duration = None
-            if msg.file_type == 'voice':
+            if msg.file_type in ['voice', 'video_circle']:
                 # Получаем длительность из БД или ставим 0:00
                 if hasattr(msg, 'duration') and msg.duration:
                     dur_sec = int(msg.duration.replace('s', ''))
@@ -1149,11 +1191,10 @@ def api_upload_avatar():
                 print(f"[Avatar] Cloudinary upload error: {e}")
                 return jsonify({'success': False, 'message': f'Cloudinary error: {str(e)}'})
         else:
-            # )Локально) сохраняем в папку
+
             print(f"[Avatar] Saving locally...")
             filename = f"avatar_{user.id}_{uuid.uuid4().hex[:8]}{ext}"
 
-            # В serverless-среде используем /tmp, иначе - локальную папку
             if os.environ.get('VERCEL') or os.environ.get('AWS_LAMBDA_FUNCTION_NAME'):
                 upload_dir = '/tmp/avatars'
                 print(f"[Avatar] Using /tmp for serverless environment")
