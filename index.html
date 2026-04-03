@@ -2044,8 +2044,15 @@
 
             renderUsers();
 
+            // Очищаем сообщения и показываем loading
+            messages = [];
+            var container = document.getElementById('messagesContainer');
+            if (container) {
+                container.innerHTML = '<div class="empty-state"><div class="icon">⏳</div><div>Загрузка...</div></div>';
+            }
+
             loadMessages();
-            
+
             if (userId !== 0) {
                 markMessagesAsRead(userId);
             }
@@ -2643,6 +2650,12 @@
                         formData.append('file_type', 'voice');
                         formData.append('duration', Math.floor((new Date() - recordingStartTime) / 1000) + 's');
 
+                        console.log('[Voice] FormData prepared:');
+                        console.log('[Voice] - file size:', voiceBlob.size);
+                        console.log('[Voice] - mimeType:', mimeType);
+                        console.log('[Voice] - file_type: voice');
+                        console.log('[Voice] - duration:', Math.floor((new Date() - recordingStartTime) / 1000) + 's');
+
                         // Добавляем waveform данные если они есть
                         if (waveform) {
                             formData.append('waveform', JSON.stringify(waveform));
@@ -2988,8 +3001,6 @@
                     videoBtn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="red" stroke="red" stroke-width="2"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>';
                 }
 
-                // ВАЖНО: start с timeslice=1000 автоматически генерирует чанки каждую секунду
-                // НЕ НУЖНО вызывать requestData() вручную!
                 videoRecorder.start(1000);
                 console.log('[Video Circle] Recording started with timeslice=1000');
 
@@ -3040,29 +3051,19 @@
         }
 
         function doSendVideo() {
-            // Проверяем что есть данные (recorder уже остановлен в sendVideoCircle)
+            console.log('[Video Circle] doSendVideo called, chunks:', videoChunks.length);
             if (!videoChunks || videoChunks.length === 0) {
-                console.error('[Video Circle] No video data available');
-                alert('Ошибка записи видео: нет данных. Попробуйте записать ещё раз.');
-                videoChunks = [];
+                console.error('[Video Circle] No video data');
                 var sendBtn = document.getElementById('sendBtn');
-                if (sendBtn) {
-                    sendBtn.disabled = true;
-                    sendBtn.style.opacity = '';
-                    sendBtn.style.zIndex = '';
-                }
+                if (sendBtn) { sendBtn.disabled = true; sendBtn.style.opacity = ''; sendBtn.style.zIndex = ''; }
                 return;
             }
 
             var totalSize = videoChunks.reduce(function(s, c) { return s + c.size; }, 0);
-            console.log('[Video Circle] Sending, chunks:', videoChunks.length, 'total size:', totalSize);
+            console.log('[Video Circle] Sending, total size:', totalSize);
 
             var mimeType = 'video/webm';
-            try {
-                if (videoRecorder && videoRecorder.mimeType) {
-                    mimeType = videoRecorder.mimeType;
-                }
-            } catch(e) {}
+            try { if (videoRecorder && videoRecorder.mimeType) mimeType = videoRecorder.mimeType; } catch(e) {}
 
             var videoBlob = new Blob(videoChunks, { type: mimeType });
             console.log('[Video Circle] Blob created, size:', videoBlob.size);
@@ -3071,10 +3072,8 @@
 
             var reader = new FileReader();
             reader.addEventListener('loadend', function() {
-                var base64Data = reader.result;
-
                 var body = {
-                    content: base64Data,
+                    content: reader.result,
                     file_type: 'video_circle',
                     duration: duration + 's',
                     recipient_id: selectedUserId === 0 ? null : selectedUserId
@@ -3085,121 +3084,65 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(body)
                 })
-                .then(function(r) {
-                    if (!r.ok) {
-                        return r.text().then(function(text) {
-                            throw new Error('HTTP ' + r.status + ': ' + text.substring(0, 200));
-                        });
-                    }
-                    return r.json();
-                })
+                .then(function(r) { return r.ok ? r.json() : r.text().then(function(t) { throw new Error('HTTP ' + r.status + ': ' + t); }); })
                 .then(function(result) {
-                    if (result.success) {
-                        console.log('[Video Circle] Sent successfully');
-                        loadMessages();
-                        loadLastMessages();
-                    } else {
-                        alert('Ошибка отправки видео: ' + (result.message || 'Неизвестная ошибка'));
-                    }
+                    if (result.success) { loadMessages(); loadLastMessages(); }
+                    else { alert('Ошибка отправки видео: ' + (result.message || 'Неизвестная ошибка')); }
                 })
-                .catch(function(err) {
-                    console.error('[Video Circle] Error:', err);
-                    alert('Ошибка сети при отправке видео: ' + err.message);
-                });
+                .catch(function(err) { console.error('[Video Circle] Error:', err); alert('Ошибка сети: ' + err.message); });
 
-                // Очищаем
                 videoChunks = [];
                 videoRecordingStartTime = null;
                 videoRecorder = null;
-
                 var sendBtn = document.getElementById('sendBtn');
-                if (sendBtn) {
-                    sendBtn.disabled = true;
-                    sendBtn.style.opacity = '';
-                    sendBtn.style.zIndex = '';
-                }
+                if (sendBtn) { sendBtn.disabled = true; sendBtn.style.opacity = ''; sendBtn.style.zIndex = ''; }
             });
-
             reader.readAsDataURL(videoBlob);
         }
 
         function sendVideoCircle() {
-            // Если есть данные — отправляем
-            if (videoChunks.length > 0 && !isVideoRecording) {
-                console.log('[Video Circle] Sending already recorded video...');
-                doSendVideo();
-                return;
-            }
-
-            if (!videoRecorder) {
-                alert('Сначала запи видео');
-                return;
-            }
+            console.log('[Video Circle] sendVideoCircle called, isRecording:', isVideoRecording, 'chunks:', videoChunks.length);
 
             if (isVideoRecording) {
-                console.log('[Video Circle] Stopping recording...');
                 isVideoRecording = false;
+                if (videoTimerInterval) { clearInterval(videoTimerInterval); videoTimerInterval = null; }
 
-                if (videoTimerInterval) {
-                    clearInterval(videoTimerInterval);
-                    videoTimerInterval = null;
-                }
-
-                // Очищаем collectInterval
-                if (videoRecorder && videoRecorder._collectInterval) {
-                    clearInterval(videoRecorder._collectInterval);
-                    videoRecorder._collectInterval = null;
-                }
-
-                // Возвращаем иконку камеры
                 var videoBtn = document.getElementById('videoCircleBtn');
                 if (videoBtn) {
                     videoBtn.classList.remove('recording');
-                    videoBtn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/></svg>';
+                    videoBtn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/></svg>';
                 }
 
-                // Скрываем модалку
                 var modal = document.getElementById('videoCircleModal');
-                modal.style.display = 'none';
+                if (modal) modal.style.display = 'none';
 
                 var video = document.getElementById('videoPreview');
-                video.srcObject = null;
+                if (video) video.srcObject = null;
 
-                // Останавливаем рекордер и ждём данные
                 if (videoRecorder && videoRecorder.state !== 'inactive') {
+                    window._videoStopResolve = null;
                     var stopPromise = new Promise(function(resolve) {
                         window._videoStopResolve = resolve;
                     });
-
                     videoRecorder.stop();
-                    console.log('[Video Circle] Recorder.stop() called, waiting for data...');
 
-                    var timeoutPromise = new Promise(function(resolve) {
-                        setTimeout(resolve, 2000);
-                    });
+                    var timeoutPromise = new Promise(function(resolve) { setTimeout(resolve, 2000); });
 
                     Promise.race([stopPromise, timeoutPromise]).then(function() {
-                        if (videoStream) {
-                            videoStream.getTracks().forEach(function(track) { track.stop(); });
-                            videoStream = null;
-                        }
-
-                        console.log('[Video Circle] Stream stopped, chunks:', videoChunks.length, 'total size:', videoChunks.reduce(function(s, c) { return s + c.size; }, 0));
+                        if (videoStream) { videoStream.getTracks().forEach(function(t) { t.stop(); }); videoStream = null; }
+                        console.log('[Video Circle] After stop, chunks:', videoChunks.length);
                         doSendVideo();
                     });
                 } else {
-                    if (videoStream) {
-                        videoStream.getTracks().forEach(function(track) { track.stop(); });
-                        videoStream = null;
-                    }
+                    if (videoStream) { videoStream.getTracks().forEach(function(t) { t.stop(); }); videoStream = null; }
                     doSendVideo();
                 }
             } else {
-                // Запись не идёт, но recorder существует
+                // Уже остановлено — отправляем что есть
                 if (videoChunks.length > 0) {
                     doSendVideo();
                 } else {
-                    alert('Нет данных для отправки');
+                    console.error('[Video Circle] No chunks to send');
                 }
             }
         }
