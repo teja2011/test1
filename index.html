@@ -455,6 +455,16 @@
             line-height: 1.4;
             word-wrap: break-word;
         }
+        .message-bubble:has(.video-circle-message) {
+            padding: 4px;
+            background: transparent !important;
+            border-radius: 50%;
+        }
+        .message-bubble.video-bubble {
+            padding: 4px;
+            background: transparent !important;
+            border-radius: 50%;
+        }
         .message.me .message-bubble {
             background: var(--message-me);
             border-bottom-right-radius: 4px;
@@ -2149,6 +2159,7 @@
             for (var i = startIndex; i < endIndex; i++) {
                 var msg = messages[i];
                 var bubbleContent = '';
+                var isVideo = msg.file_type === 'video_circle';
                 if (msg.file_type === 'image') {
                     bubbleContent = '<img src="' + msg.content + '" class="chat-img" onclick="window.open(this.src)" style="max-width:200px;border-radius:8px;cursor:pointer;">';
                 }
@@ -2169,8 +2180,12 @@
                     moscowTime = (hours < 10 ? '0' + hours : hours) + ':' + parts[1];
                 }
 
+                var bubbleStyle = isVideo
+                    ? 'padding: 4px; background: transparent; max-width: 260px;'
+                    : 'background:' + (msg.is_mine ? 'var(--primary)' : 'var(--surface)') + ';color:' + (msg.is_mine ? 'white' : 'var(--text)') + ';padding:10px 14px;border-radius:16px;max-width:70%;word-wrap:break-word;';
+
                 html += '<div class="message ' + (msg.is_mine ? 'me' : 'other') + '" data-id="' + msg.id + '" style="padding:8px 16px;display:flex;' + (msg.is_mine ? 'justify-content:flex-end;' : 'justify-content:flex-start;') + '">' +
-                    '<div class="message-bubble" style="background:' + (msg.is_mine ? 'var(--primary)' : 'var(--surface)') + ';color:' + (msg.is_mine ? 'white' : 'var(--text)') + ';padding:10px 14px;border-radius:16px;max-width:70%;word-wrap:break-word;">' + bubbleContent + '</div>' +
+                    '<div class="message-bubble' + (isVideo ? ' video-bubble' : '') + '" style="' + bubbleStyle + '">' + bubbleContent + '</div>' +
                     '<div class="message-time" style="font-size:11px;color:var(--text-secondary);margin-left:8px;align-self:flex-end;white-space:nowrap;">' + escapeHtml(msg.sender) + ' • ' + moscowTime + statusIcon + '</div></div>';
             }
 
@@ -2199,6 +2214,7 @@
             var html = '';
             messages.forEach(function(msg) {
                 var bubbleContent = '';
+                var isVideo = msg.file_type === 'video_circle';
                 if (msg.file_type === 'image') {
                     bubbleContent = '<img src="' + msg.content + '" class="chat-img" onclick="window.open(this.src)">';
                 }
@@ -2225,7 +2241,7 @@
                     moscowTime = (hours < 10 ? '0' + hours : hours) + ':' + parts[1];
                 }
                 html += '<div class="message ' + (msg.is_mine ? 'me' : 'other') + '" data-id="' + msg.id + '">' +
-                    '<div class="message-bubble">' + bubbleContent + '</div>' +
+                    '<div class="message-bubble' + (isVideo ? ' video-bubble' : '') + '">' + bubbleContent + '</div>' +
                     '<div class="message-time">' + escapeHtml(msg.sender) + ' • ' + moscowTime + statusIcon + '</div>' +
                     '</div>';
             });
@@ -2970,99 +2986,116 @@
         }
 
         function doSendVideo() {
-            if (videoChunks.length === 0) {
-                alert('Ошибка записи видео: нет данных');
+            // Принудительно запрашиваем последний чанк
+            if (videoRecorder && videoRecorder.state === 'recording') {
+                try {
+                    videoRecorder.requestData();
+                } catch(e) {
+                    console.warn('[Video Circle] requestData error:', e);
+                }
+            }
+
+            // Останавливаем recorder чтобы получить финальный чанк
+            if (videoRecorder && videoRecorder.state !== 'inactive') {
+                videoRecorder.stop();
+            }
+
+            // Ждём немного чтобы чанки собрались
+            setTimeout(function() {
+                if (videoChunks.length === 0 || videoChunks.every(function(c) { return c.size === 0; })) {
+                    alert('Ошибка записи видео: нет данных');
+                    videoChunks = [];
+                    var sendBtn = document.getElementById('sendBtn');
+                    if (sendBtn) {
+                        sendBtn.disabled = true;
+                        sendBtn.style.opacity = '';
+                        sendBtn.style.zIndex = '';
+                    }
+                    return;
+                }
+
+                var totalSize = 0;
+                for (var i = 0; i < videoChunks.length; i++) {
+                    totalSize += videoChunks[i].size;
+                }
+                console.log('[Video Circle] Sending, chunks:', videoChunks.length, 'total size:', totalSize);
+
+                var mimeType = 'video/webm';
+                try {
+                    if (videoRecorder && videoRecorder.mimeType) {
+                        mimeType = videoRecorder.mimeType;
+                    }
+                } catch(e) {}
+
+                console.log('[Video Circle] Using mimeType:', mimeType);
+
+                var videoBlob = new Blob(videoChunks, { type: mimeType });
+                console.log('[Video Circle] Blob created, size:', videoBlob.size, 'type:', videoBlob.type);
+
+                // Рассчитываем длительность
+                var duration = Math.floor((new Date() - videoRecordingStartTime) / 1000);
+                console.log('[Video Circle] Duration:', duration + 's');
+
+                // Конвертируем Blob в base64 и отправляем как JSON
+                var reader = new FileReader();
+                reader.addEventListener('loadend', function() {
+                    var base64Data = reader.result; // data:video/webm;base64,...
+                    console.log('[Video Circle] Base64 length:', base64Data.length);
+
+                    var body = {
+                        content: base64Data,
+                        file_type: 'video_circle',
+                        duration: duration + 's',
+                        recipient_id: selectedUserId === 0 ? null : selectedUserId
+                    };
+
+                    console.log('[Video Circle] Sending as JSON, content length:', body.content.length);
+
+                    apiFetch('/api/send-file', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(body)
+                    })
+                    .then(function(r) {
+                        console.log('[Video Circle] Response status:', r.status);
+                        if (!r.ok) {
+                            return r.text().then(function(text) {
+                                console.error('[Video Circle] Response body:', text.substring(0, 500));
+                                throw new Error('HTTP ' + r.status + ': ' + text.substring(0, 200));
+                            });
+                        }
+                        return r.json();
+                    })
+                    .then(function(result) {
+                        console.log('[Video Circle] Result:', JSON.stringify(result));
+                        if (result.success) {
+                            console.log('[Video Circle] Sent successfully');
+                            loadMessages();
+                            loadLastMessages();
+                        } else {
+                            console.error('[Video Circle] Send failed:', result.message);
+                            alert('Ошибка отправки видео: ' + (result.message || 'Неизвестная ошибка'));
+                        }
+                    })
+                    .catch(function(err) {
+                        console.error('[Video Circle] Network error:', err);
+                        alert('Ошибка сети при отправке видео: ' + err.message);
+                    });
+                });
+
+                reader.readAsDataURL(videoBlob);
+
+                // Очищаем
                 videoChunks = [];
+                videoRecordingStartTime = null;
+
                 var sendBtn = document.getElementById('sendBtn');
                 if (sendBtn) {
                     sendBtn.disabled = true;
                     sendBtn.style.opacity = '';
                     sendBtn.style.zIndex = '';
                 }
-                return;
-            }
-
-            var totalSize = 0;
-            for (var i = 0; i < videoChunks.length; i++) {
-                totalSize += videoChunks[i].size;
-            }
-            console.log('[Video Circle] Sending, chunks:', videoChunks.length, 'total size:', totalSize);
-
-            var mimeType = 'video/webm';
-            try {
-                if (videoRecorder && videoRecorder.mimeType) {
-                    mimeType = videoRecorder.mimeType;
-                }
-            } catch(e) {}
-
-            console.log('[Video Circle] Using mimeType:', mimeType);
-
-            var videoBlob = new Blob(videoChunks, { type: mimeType });
-            console.log('[Video Circle] Blob created, size:', videoBlob.size, 'type:', videoBlob.type);
-
-            // Рассчитываем длительность
-            var duration = Math.floor((new Date() - videoRecordingStartTime) / 1000);
-            console.log('[Video Circle] Duration:', duration + 's');
-
-            // Конвертируем Blob в base64 и отправляем как JSON
-            var reader = new FileReader();
-            reader.addEventListener('loadend', function() {
-                var base64Data = reader.result; // data:video/webm;base64,...
-                console.log('[Video Circle] Base64 length:', base64Data.length);
-
-                var body = {
-                    content: base64Data,
-                    file_type: 'video_circle',
-                    duration: duration + 's',
-                    recipient_id: selectedUserId === 0 ? null : selectedUserId
-                };
-
-                console.log('[Video Circle] Sending as JSON, content length:', body.content.length);
-
-                apiFetch('/api/send-file', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(body)
-                })
-                .then(function(r) {
-                    console.log('[Video Circle] Response status:', r.status);
-                    if (!r.ok) {
-                        return r.text().then(function(text) {
-                            console.error('[Video Circle] Response body:', text.substring(0, 500));
-                            throw new Error('HTTP ' + r.status + ': ' + text.substring(0, 200));
-                        });
-                    }
-                    return r.json();
-                })
-                .then(function(result) {
-                    console.log('[Video Circle] Result:', JSON.stringify(result));
-                    if (result.success) {
-                        console.log('[Video Circle] Sent successfully');
-                        loadMessages();
-                        loadLastMessages();
-                    } else {
-                        console.error('[Video Circle] Send failed:', result.message);
-                        alert('Ошибка отправки видео: ' + (result.message || 'Неизвестная ошибка'));
-                    }
-                })
-                .catch(function(err) {
-                    console.error('[Video Circle] Network error:', err);
-                    alert('Ошибка сети при отправке видео: ' + err.message);
-                });
-            });
-
-            reader.readAsDataURL(videoBlob);
-
-            // Очищаем
-            videoChunks = [];
-            videoRecordingStartTime = null;
-
-            var sendBtn = document.getElementById('sendBtn');
-            if (sendBtn) {
-                sendBtn.disabled = true;
-                sendBtn.style.opacity = '';
-                sendBtn.style.zIndex = '';
-            }
+            }, 300);
         }
 
         function sendVideoCircle() {
@@ -3191,6 +3224,7 @@
             if (msg.status === 'sent') statusIcon = ' ✓';
             else if (msg.status === 'delivered' || msg.status === 'read') statusIcon = ' ✓✓';
 
+            var isVideo = msg.file_type === 'video_circle';
             var bubbleContent = '';
             if (msg.file_type === 'image') {
                 bubbleContent = '<img src="' + msg.content + '" class="chat-img" onclick="window.open(this.src)">';
@@ -3211,11 +3245,12 @@
                 moscowTime = (hours < 10 ? '0' + hours : hours) + ':' + minutes;
             }
 
+            var bubbleStyle = isVideo ? 'padding: 4px; background: transparent;' : 'padding-right: 36px;';
             var html = '<div class="message ' + (msg.is_mine ? 'me' : 'other') + '" data-id="' + msg.id + '" style="position: relative;">' +
                 '<button class="message-menu-btn" onclick="showMessageMenu(event, ' + msg.id + ', ' + msg.is_mine + ')" title="Ещё" style="left: 4px; right: auto;">' +
                 '<svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>' +
                 '</button>' +
-                '<div class="message-bubble" style="padding-right: 36px;">' + bubbleContent + '</div>' +
+                '<div class="message-bubble' + (isVideo ? ' video-bubble' : '') + '" style="' + bubbleStyle + '">' + bubbleContent + '</div>' +
                 '<div class="message-time">' + escapeHtml(msg.sender) + ' • ' + moscowTime + statusIcon + '</div>' +
                 '</div>';
 
@@ -3644,7 +3679,7 @@
                 '<span class="video-duration">' + duration + '</span>' +
                 '</div>';
 
-            return videoHtml;
+            return '<div class="video-bubble" style="padding: 4px; background: transparent !important;">' + videoHtml + '</div>';
         }
 
         function captureFirstFrame(videoEl) {
