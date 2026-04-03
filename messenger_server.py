@@ -84,17 +84,77 @@ Base = declarative_base()
 
 # Флаг для отслеживания инициализации БД
 _db_initialized = False
+_migration_done = False
+
+def run_migration():
+    """Выполнить миграцию (добавить недостающие колонки)"""
+    global _migration_done
+    if _migration_done:
+        return True
+    try:
+        add_missing_columns()
+        _migration_done = True
+        return True
+    except Exception as e:
+        print(f"[Migrate] Migration failed: {e}")
+        # Не блокируем — сервер может работать без waveform
+        return False
 
 def check_and_create_tables():
-    """Проверить существование таблиц и создать их если нет"""
+    """Проверить существование таблиц и создать их если нет, а также добавить недостающие колонки"""
     try:
         # Используем checkfirst=True для безопасного создания
         print("Проверка и создание таблиц...")
         Base.metadata.create_all(engine, checkfirst=True)
         print("Таблицы проверены/созданы: users, messages, notifications")
+        
+        # Добавляем недостающие колонки если их нет
+        run_migration()
     except Exception as e:
         print(f"Ошибка при создании таблиц: {e}")
         raise
+
+def add_missing_columns():
+    """Добавить недостающие колонки в существующие таблицы (для миграций)"""
+    try:
+        with engine.connect() as conn:
+            if DATABASE_URL:
+                # PostgreSQL
+                try:
+                    result = conn.execute(text("""
+                        SELECT column_name FROM information_schema.columns 
+                        WHERE table_name = 'messages' AND column_name = 'waveform'
+                    """))
+                    has_waveform = result.fetchone() is not None
+                except Exception:
+                    has_waveform = False
+                
+                if not has_waveform:
+                    print("[Migrate] Добавление колонки waveform в messages...")
+                    conn.execute(text("ALTER TABLE messages ADD COLUMN waveform TEXT"))
+                    conn.commit()
+                    print("[Migrate] ✓ Колонка waveform добавлена")
+                else:
+                    print("[Migrate] ✓ Колонка waveform уже существует")
+            else:
+                # SQLite
+                try:
+                    result = conn.execute(text("PRAGMA table_info(messages)"))
+                    columns = [row[1] for row in result.fetchall()]
+                    has_waveform = 'waveform' in columns
+                except Exception:
+                    has_waveform = False
+                
+                if not has_waveform:
+                    print("[Migrate] Добавление колонки waveform в messages...")
+                    conn.execute(text("ALTER TABLE messages ADD COLUMN waveform TEXT"))
+                    conn.commit()
+                    print("[Migrate] ✓ Колонка waveform добавлена")
+                else:
+                    print("[Migrate] ✓ Колонка waveform уже существует")
+    except Exception as e:
+        print(f"[Migrate] Ошибка добавления колонок: {e}")
+        # Не блокируем работу — сервер будет работать без waveform
 
 class User(Base):
     __tablename__ = 'users'
@@ -158,6 +218,9 @@ def init_tables():
         # Создаём таблицы
         Base.metadata.create_all(engine)
         
+        # Добавляем недостающие колонки
+        add_missing_columns()
+
         # Проверяем что таблицы созданы
         with engine.connect() as conn:
             if DATABASE_URL:
@@ -193,6 +256,8 @@ def ensure_tables():
     """Гарантировать что таблицы существуют (для serverless/Supabase)"""
     global _tables_initialized
     if _tables_initialized:
+        # Всё равно проверяем миграцию — может быть первый запрос после деплоя
+        run_migration()
         return True
     try:
         # Проверяем подключение
@@ -200,13 +265,20 @@ def ensure_tables():
             pass
         # Создаём таблицы
         Base.metadata.create_all(engine)
+        # Добавляем недостающие колонки
+        run_migration()
         _tables_initialized = True
         print("[DB] Tables ensured for serverless")
         return True
     except Exception as e:
         print(f"[DB] Error ensuring tables: {e}")
         # Не блокируем запрос - возможно таблицы уже существуют
-        return False
+        # Пробуем миграцию на случай если таблицы уже есть
+        try:
+            run_migration()
+        except:
+            pass
+        return True  # Возвращаем True чтобы не блокировать запросы
 
 def create_notification(db, user_id, message, sender_id=None, notif_type='message'):
     """Создаёт уведомление для пользователя"""
@@ -427,11 +499,22 @@ def api_users():
                 last_seen_str = last_seen_msk.strftime('%d.%m %H:%M') if last_seen_msk else None
 
             # Считаем непрочитанные сообщения от этого пользователя
-            unread_count = db.query(Message).filter(
-                Message.sender_id == u.id,
-                Message.recipient_id == user.id,
-                Message.status != 'read'
-            ).count()
+            try:
+                unread_count = db.query(Message).filter(
+                    Message.sender_id == u.id,
+                    Message.recipient_id == user.id,
+                    Message.status != 'read'
+                ).count()
+            except Exception:
+                # Fallback на raw SQL если ORM не работает
+                try:
+                    result_row = db.execute(text("""
+                        SELECT COUNT(*) as cnt FROM messages
+                        WHERE sender_id = :sid AND recipient_id = :rid AND status != 'read'
+                    """), {'sid': u.id, 'rid': user.id}).fetchone()
+                    unread_count = result_row[0] if result_row else 0
+                except Exception:
+                    unread_count = 0
 
             result.append({
                 'id': u.id,
@@ -455,31 +538,73 @@ def api_messages(recipient_id=None):
         return jsonify([])
     db = get_db()
     try:
-        if recipient_id:
-            msgs = db.query(Message).filter(
-                or_(
-                    and_(Message.sender_id == user.id, Message.recipient_id == recipient_id),
-                    and_(Message.sender_id == recipient_id, Message.recipient_id == user.id)
-                )
-            ).order_by(Message.created_at.asc()).all()
-        else:
-            msgs = db.query(Message).filter(Message.recipient_id.is_(None)).order_by(Message.created_at.asc()).all()
+        # Пробуем обычный запрос (с waveform)
+        try:
+            if recipient_id:
+                msgs = db.query(Message).filter(
+                    or_(
+                        and_(Message.sender_id == user.id, Message.recipient_id == recipient_id),
+                        and_(Message.sender_id == recipient_id, Message.recipient_id == user.id)
+                    )
+                ).order_by(Message.created_at.asc()).all()
+            else:
+                msgs = db.query(Message).filter(Message.recipient_id.is_(None)).order_by(Message.created_at.asc()).all()
+        except Exception as query_err:
+            # Если ошибка из-за waveform — пробуем без неё через raw SQL
+            if 'waveform' in str(query_err).lower():
+                print(f"[Messages] Fallback to raw SQL due to: {query_err}")
+                if recipient_id:
+                    msgs = db.execute(text("""
+                        SELECT id, sender_id, recipient_id, content, created_at, file_type, status, duration, waveform
+                        FROM messages
+                        WHERE (sender_id = :uid1 AND recipient_id = :rid1)
+                           OR (sender_id = :rid2 AND recipient_id = :uid2)
+                        ORDER BY created_at ASC
+                    """), {
+                        'uid1': user.id, 'rid1': recipient_id,
+                        'rid2': recipient_id, 'uid2': user.id
+                    }).fetchall()
+                else:
+                    msgs = db.execute(text("""
+                        SELECT id, sender_id, recipient_id, content, created_at, file_type, status, duration, waveform
+                        FROM messages
+                        WHERE recipient_id IS NULL
+                        ORDER BY created_at ASC
+                    """)).fetchall()
+                # Конвертируем Row в dict
+                msgs = [dict(m._mapping) for m in msgs]
+            else:
+                raise
+        
         result = []
         for m in msgs:
-            sender = db.query(User).filter_by(id=m.sender_id).first()
-            # Получаем статус, если колонка существует
-            msg_status = 'sent'
-            try:
-                msg_status = m.status or 'sent'
-            except:
-                msg_status = 'sent'
+            # Поддержка как ORM объектов так и dict
+            if isinstance(m, dict):
+                m_id = m['id']
+                m_sender_id = m['sender_id']
+                m_content = m['content']
+                m_created_at = m['created_at']
+                m_file_type = m.get('file_type')
+                m_status = m.get('status', 'sent')
+                m_duration = m.get('duration')
+                m_waveform = m.get('waveform')
+            else:
+                m_id = m.id
+                m_sender_id = m.sender_id
+                m_content = m.content
+                m_created_at = m.created_at
+                m_file_type = m.file_type
+                m_status = m.status or 'sent'
+                m_duration = m.duration
+                m_waveform = m.waveform if hasattr(m, 'waveform') else None
+            
+            sender = db.query(User).filter_by(id=m_sender_id).first()
+            msg_status = m_status or 'sent'
 
             duration = None
-            if m.file_type in ['voice', 'video_circle']:
-                # Получаем длительность из БД или ставим 0:00
-                if hasattr(m, 'duration') and m.duration:
-                    # Конвертируем из формата "30s" в "0:30"
-                    dur_sec = int(m.duration.replace('s', ''))
+            if m_file_type in ['voice', 'video_circle']:
+                if m_duration:
+                    dur_sec = int(m_duration.replace('s', ''))
                     minutes = dur_sec // 60
                     seconds = dur_sec % 60
                     duration = f'{minutes}:{seconds:02d}'
@@ -487,15 +612,15 @@ def api_messages(recipient_id=None):
                     duration = '0:00'
 
             msg_dict = {
-                'id': m.id,
+                'id': m_id,
                 'sender': sender.username if sender else 'Unknown',
-                'content': m.content,
-                'created_at': to_msk(m.created_at).strftime('%H:%M'),
-                'is_mine': m.sender_id == user.id,
-                'file_type': m.file_type,
+                'content': m_content,
+                'created_at': to_msk(m_created_at).strftime('%H:%M'),
+                'is_mine': m_sender_id == user.id,
+                'file_type': m_file_type,
                 'status': msg_status,
                 'duration': duration,
-                'waveform': m.waveform if hasattr(m, 'waveform') and m.waveform else None
+                'waveform': m_waveform
             }
             result.append(msg_dict)
         return jsonify(result)
@@ -718,7 +843,7 @@ def api_send_file():
             print(f"[send-file] No file data in request")
             return jsonify({'success': False, 'message': 'No file data'})
 
-        # Пробуем со статусом и duration
+        # Пробуем со статусом и duration и waveform
         try:
             msg = Message(
                 sender_id=user.id,
@@ -732,21 +857,39 @@ def api_send_file():
             db.add(msg)
             db.commit()
             print(f"[send-file] Message saved with id: {msg.id}, waveform: {waveform is not None}")
-        except Exception as e:
-            # Если колонки status нет - без статуса
+        except Exception as e1:
+            # Если колонки waveform нет - пробуем raw SQL INSERT
             db.rollback()
-            print(f"[send-file] First save failed, retrying without status: {e}")
-            msg = Message(
-                sender_id=user.id,
-                recipient_id=recipient_id if recipient_id else None,
-                content=content,
-                file_type=file_type,
-                duration=msg_duration,
-                waveform=waveform if file_type == 'voice' else None
-            )
-            db.add(msg)
-            db.commit()
-            print(f"[send-file] Message saved (no status) with id: {msg.id}")
+            print(f"[send-file] ORM save failed ({e1}), using raw SQL INSERT...")
+            try:
+                if recipient_id:
+                    db.execute(text("""
+                        INSERT INTO messages (sender_id, recipient_id, content, file_type, status, duration)
+                        VALUES (:sid, :rid, :content, :ft, 'sent', :dur)
+                    """), {
+                        'sid': user.id,
+                        'rid': int(recipient_id),
+                        'content': content,
+                        'ft': file_type,
+                        'dur': msg_duration
+                    })
+                else:
+                    db.execute(text("""
+                        INSERT INTO messages (sender_id, recipient_id, content, file_type, status, duration)
+                        VALUES (:sid, NULL, :content, :ft, 'sent', :dur)
+                    """), {
+                        'sid': user.id,
+                        'content': content,
+                        'ft': file_type,
+                        'dur': msg_duration
+                    })
+                db.commit()
+                msg_id = db.execute(text("SELECT lastval()")).scalar() if DATABASE_URL else db.execute(text("SELECT last_insert_rowid()")).scalar()
+                print(f"[send-file] Message saved via raw SQL with id: {msg_id}")
+            except Exception as e2:
+                db.rollback()
+                print(f"[send-file] Raw SQL INSERT also failed: {e2}")
+                return jsonify({'success': False, 'message': f'Ошибка сохранения: {str(e2)}'})
 
         # Отправляем уведомление получателю
         if recipient_id:
@@ -1022,36 +1165,76 @@ def api_last_messages():
     db = get_db()
     try:
         # Получаем все сообщения между текущим пользователем и другими
-        msgs = db.query(Message).filter(
-            or_(
-                and_(Message.sender_id == user.id, Message.recipient_id.isnot(None)),
-                and_(Message.recipient_id == user.id, Message.sender_id.isnot(None))
-            )
-        ).order_by(Message.created_at.desc()).all()
+        try:
+            msgs = db.query(Message).filter(
+                or_(
+                    and_(Message.sender_id == user.id, Message.recipient_id.isnot(None)),
+                    and_(Message.recipient_id == user.id, Message.sender_id.isnot(None))
+                )
+            ).order_by(Message.created_at.desc()).all()
+        except Exception:
+            # Fallback на raw SQL
+            msgs_raw = db.execute(text("""
+                SELECT id, sender_id, recipient_id, content, created_at, file_type, status, duration
+                FROM messages
+                WHERE (sender_id = :uid AND recipient_id IS NOT NULL)
+                   OR (recipient_id = :uid AND sender_id IS NOT NULL)
+                ORDER BY created_at DESC
+            """), {'uid': user.id}).fetchall()
+            msgs = [dict(m._mapping) for m in msgs_raw]
 
         # Группируем по собеседнику и берём последнее сообщение
         last_messages = {}
         for msg in msgs:
-            partner_id = msg.recipient_id if msg.sender_id == user.id else msg.sender_id
+            # Поддержка dict и ORM объектов
+            if isinstance(msg, dict):
+                m_sender_id = msg['sender_id']
+                m_recipient_id = msg['recipient_id']
+            else:
+                m_sender_id = msg.sender_id
+                m_recipient_id = msg.recipient_id
+            partner_id = m_recipient_id if m_sender_id == user.id else m_sender_id
             if partner_id not in last_messages:
                 last_messages[partner_id] = msg
 
         result = []
         for partner_id, msg in last_messages.items():
-            sender = db.query(User).filter_by(id=msg.sender_id).first()
+            # Поддержка dict и ORM объектов
+            if isinstance(msg, dict):
+                m_id = msg['id']
+                m_sender_id = msg['sender_id']
+                m_recipient_id = msg['recipient_id']
+                m_content = msg['content']
+                m_created_at = msg['created_at']
+                m_file_type = msg.get('file_type')
+                m_status = msg.get('status', 'sent')
+                m_duration = msg.get('duration')
+            else:
+                m_id = msg.id
+                m_sender_id = msg.sender_id
+                m_recipient_id = msg.recipient_id
+                m_content = msg.content
+                m_created_at = msg.created_at
+                m_file_type = msg.file_type
+                m_status = msg.status or 'sent'
+                m_duration = msg.duration
             
+            sender = db.query(User).filter_by(id=m_sender_id).first()
+
             # Считаем непрочитанные сообщения от этого партнера
-            unread_count = db.query(Message).filter(
-                Message.sender_id == partner_id,
-                Message.recipient_id == user.id,
-                Message.status != 'read'
-            ).count()
+            try:
+                unread_count = db.query(Message).filter(
+                    Message.sender_id == partner_id,
+                    Message.recipient_id == user.id,
+                    Message.status != 'read'
+                ).count()
+            except Exception:
+                unread_count = 0
 
             duration = None
-            if msg.file_type in ['voice', 'video_circle']:
-                # Получаем длительность из БД или ставим 0:00
-                if hasattr(msg, 'duration') and msg.duration:
-                    dur_sec = int(msg.duration.replace('s', ''))
+            if m_file_type in ['voice', 'video_circle']:
+                if m_duration:
+                    dur_sec = int(m_duration.replace('s', ''))
                     minutes = dur_sec // 60
                     seconds = dur_sec % 60
                     duration = f'{minutes}:{seconds:02d}'
@@ -1059,14 +1242,14 @@ def api_last_messages():
                     duration = '0:00'
 
             result.append({
-                'id': msg.id,
+                'id': m_id,
                 'sender': sender.username if sender else 'Unknown',
-                'sender_id': msg.sender_id,
-                'recipient_id': msg.recipient_id,
-                'content': msg.content,
-                'created_at': to_msk(msg.created_at).strftime('%H:%M'),
-                'file_type': msg.file_type,
-                'status': getattr(msg, 'status', 'sent') or 'sent',
+                'sender_id': m_sender_id,
+                'recipient_id': m_recipient_id,
+                'content': m_content,
+                'created_at': to_msk(m_created_at).strftime('%H:%M'),
+                'file_type': m_file_type,
+                'status': m_status,
                 'unread_count': unread_count,
                 'duration': duration
             })
