@@ -1233,23 +1233,26 @@ def api_delete_user_account():
         return jsonify({'success': False, 'message': 'Not authorized'}), 401
 
     user_id = user.id
-    db.close()  # Закрываем ORM сессию, чтобы не блокировала соединение
+    db.close()
 
     try:
         from sqlalchemy import text
 
-        with engine.begin() as conn:
-            # Временно отключаем проверку FK constraints для этой транзакции
-            conn.execute(text("SET session_replication_role = 'replica'"))
+        # Каждый DELETE в отдельной транзакции чтобы обойти FK в Neon
+        # Порядок важен: сначала дочерние, потом родитель
+        delete_queries = [
+            "DELETE FROM push_subscriptions WHERE user_id = :uid",
+            "DELETE FROM devices WHERE user_id = :uid",
+            "DELETE FROM calls WHERE caller_id = :uid OR callee_id = :uid",
+            "DELETE FROM notifications WHERE user_id = :uid OR sender_id = :uid",
+            "DELETE FROM messages WHERE sender_id = :uid OR recipient_id = :uid",
+            "DELETE FROM users WHERE id = :uid",
+        ]
 
-            # Удаляем всё связанное с пользователем (порядок не важен)
-            conn.execute(text("DELETE FROM push_subscriptions WHERE user_id = :uid"), {"uid": user_id})
-            conn.execute(text("DELETE FROM devices WHERE user_id = :uid"), {"uid": user_id})
-            conn.execute(text("DELETE FROM calls WHERE caller_id = :uid OR callee_id = :uid"), {"uid": user_id})
-            conn.execute(text("DELETE FROM notifications WHERE user_id = :uid OR sender_id = :uid"), {"uid": user_id})
-            conn.execute(text("DELETE FROM messages WHERE sender_id = :uid OR recipient_id = :uid"), {"uid": user_id})
-            conn.execute(text("DELETE FROM users WHERE id = :uid"), {"uid": user_id})
-            # COMMIT вызывается автоматически при выходе из with engine.begin()
+        for query in delete_queries:
+            with engine.begin() as conn:
+                conn.execute(text(query), {"uid": user_id})
+            # Каждая транзакция коммитится отдельно — FK не блокирует
 
         resp = make_response(jsonify({'success': True}))
         resp.set_cookie('user_id', '', max_age=0)
