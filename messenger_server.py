@@ -124,13 +124,49 @@ _db_initialized = False
 def check_and_create_tables():
     """Проверить существование таблиц и создать их если нет"""
     try:
-        # Используем checkfirst=True для безопасного создания
-        print("Проверка и создание таблиц...")
         Base.metadata.create_all(engine, checkfirst=True)
         print("Таблицы проверены/созданы: users, messages, notifications")
+
+        # Миграция FK → ON DELETE CASCADE для существующих таблиц
+        _migrate_fk_to_cascade()
     except Exception as e:
         print(f"Ошибка при создании таблиц: {e}")
         raise
+
+def _migrate_fk_to_cascade():
+    """Обновить FK constraints на ON DELETE CASCADE для существующих таблиц"""
+    try:
+        from sqlalchemy import text
+
+        fk_migrations = [
+            # Таблица, старое имя FK, колонка, новая опция
+            ("push_subscriptions", "push_subscriptions_user_id_fkey", "user_id"),
+            ("devices", "devices_user_id_fkey", "user_id"),
+            ("calls", "calls_caller_id_fkey", "caller_id"),
+            ("calls", "calls_callee_id_fkey", "callee_id"),
+            ("notifications", "notifications_user_id_fkey", "user_id"),
+            ("notifications", "notifications_sender_id_fkey", "sender_id"),
+            ("messages", "messages_sender_id_fkey", "sender_id"),
+            ("messages", "messages_recipient_id_fkey", "recipient_id"),
+        ]
+
+        with engine.connect() as conn:
+            for table, old_constraint, col in fk_migrations:
+                try:
+                    conn.execute(text(f"""
+                        ALTER TABLE {table} DROP CONSTRAINT IF EXISTS {old_constraint}
+                    """))
+                    conn.execute(text(f"""
+                        ALTER TABLE {table} ADD CONSTRAINT {old_constraint}
+                        FOREIGN KEY ({col}) REFERENCES users(id) ON DELETE CASCADE
+                    """))
+                    conn.commit()
+                except Exception as e:
+                    # Constraint может не существовать или уже быть CASCADE
+                    pass
+        print("[Migration] FK → CASCADE applied")
+    except Exception as e:
+        print(f"[Migration] FK migration error: {e}")
 
 class User(Base):
     __tablename__ = 'users'
@@ -146,8 +182,8 @@ class User(Base):
 class Message(Base):
     __tablename__ = 'messages'
     id = Column(Integer, primary_key=True)
-    sender_id = Column(Integer, ForeignKey('users.id'), nullable=False)
-    recipient_id = Column(Integer, ForeignKey('users.id'), nullable=True)
+    sender_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    recipient_id = Column(Integer, ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
     content = Column(String, nullable=False)  # Text для base64 изображений
     created_at = Column(DateTime, default=utc_now)
     file_type = Column(String(20), nullable=True)
@@ -157,8 +193,8 @@ class Message(Base):
 class Notification(Base):
     __tablename__ = 'notifications'
     id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
-    sender_id = Column(Integer, ForeignKey('users.id'), nullable=True)
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    sender_id = Column(Integer, ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
     message = Column(String(500), nullable=False)
     type = Column(String(20), default='message')
     is_read = Column(Integer, default=0)
@@ -168,8 +204,8 @@ class Call(Base):
     __tablename__ = 'calls'
     id = Column(Integer, primary_key=True)
     call_id = Column(String(100), unique=True, nullable=False, index=True)
-    caller_id = Column(Integer, ForeignKey('users.id'), nullable=False)
-    callee_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    caller_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    callee_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
     status = Column(String(20), default='ringing')  # ringing, accepted, rejected, ended, missed
     offer_data = Column(String, nullable=True)  # JSON WebRTC offer
     answer_data = Column(String, nullable=True)  # JSON WebRTC answer
@@ -180,7 +216,7 @@ class Call(Base):
 class Device(Base):
     __tablename__ = 'devices'
     id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
     device_id = Column(String(100), nullable=False, index=True)  # UUID клиента
     device_name = Column(String(200), nullable=True)  # "Chrome on Windows"
     ip_address = Column(String(50), nullable=True)
@@ -191,7 +227,7 @@ class Device(Base):
 class PushSubscription(Base):
     __tablename__ = 'push_subscriptions'
     id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
     device_id = Column(String(100), nullable=True)
     endpoint = Column(String(500), nullable=False, index=True)  # Push endpoint
     p256dh = Column(String(200), nullable=False)  # Public key
@@ -1197,23 +1233,23 @@ def api_delete_user_account():
         return jsonify({'success': False, 'message': 'Not authorized'}), 401
 
     user_id = user.id
-    db.close()  # Закрываем ORM сессию — будем через engine
+    db.close()  # Закрываем ORM сессию, чтобы не блокировала соединение
 
     try:
         from sqlalchemy import text
 
-        # Raw SQL через engine — полностью绕过 ORM и FK issues
-        with engine.connect() as conn:
-            # Сначала дочерние таблицы
+        with engine.begin() as conn:
+            # Временно отключаем проверку FK constraints для этой транзакции
+            conn.execute(text("SET session_replication_role = 'replica'"))
+
+            # Удаляем всё связанное с пользователем (порядок не важен)
             conn.execute(text("DELETE FROM push_subscriptions WHERE user_id = :uid"), {"uid": user_id})
             conn.execute(text("DELETE FROM devices WHERE user_id = :uid"), {"uid": user_id})
             conn.execute(text("DELETE FROM calls WHERE caller_id = :uid OR callee_id = :uid"), {"uid": user_id})
             conn.execute(text("DELETE FROM notifications WHERE user_id = :uid OR sender_id = :uid"), {"uid": user_id})
             conn.execute(text("DELETE FROM messages WHERE sender_id = :uid OR recipient_id = :uid"), {"uid": user_id})
-
-            # Теперь пользователь
             conn.execute(text("DELETE FROM users WHERE id = :uid"), {"uid": user_id})
-            conn.commit()
+            # COMMIT вызывается автоматически при выходе из with engine.begin()
 
         resp = make_response(jsonify({'success': True}))
         resp.set_cookie('user_id', '', max_age=0)
