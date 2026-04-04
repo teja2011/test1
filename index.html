@@ -1618,60 +1618,6 @@
                 });
         }
 
-        function login() {
-            var username = document.getElementById('usernameInput').value.trim();
-            var password = document.getElementById('passwordInput').value;
-            var jtUsername = document.getElementById('jtUsernameInput').value.trim();
-            var errorEl = document.getElementById('loginError');
-
-            if (!username) {
-                errorEl.textContent = 'Введите имя или @username';
-                return;
-            }
-            if (username.length < 2) {
-                errorEl.textContent = 'Имя должно быть не менее 2 символов';
-                return;
-            }
-            if (!password) {
-                errorEl.textContent = 'Введите пароль';
-                return;
-            }
-            if (password.length < 6) {
-                errorEl.textContent = 'Пароль должен быть не менее 6 символов';
-                return;
-            }
-
-            apiFetch('/api/login', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({username: username, password: password})
-            })
-            .then(function(r) {
-                if (!r.ok) {
-                    throw new Error('Ошибка сервера: ' + r.status);
-                }
-                return r.json();
-            })
-            .then(function(result) {
-                if (result.success) {
-                    currentUser = result.user;
-                    showChat();
-                } else if (result.message && result.message.includes('не найден')) {
-                    if (confirm('Пользователь не найден. Зарегистрироваться?')) {
-                        register(username, password, jtUsername);
-                    } else {
-                        errorEl.textContent = result.message;
-                    }
-                } else {
-                    errorEl.textContent = result.message;
-                }
-            })
-            .catch(function(err) {
-                console.error('Ошибка входа:', err);
-                errorEl.textContent = 'Ошибка: ' + err.message;
-            });
-        }
-
         function register(username, password, jtUsername) {
             var errorEl = document.getElementById('loginError');
 
@@ -2167,10 +2113,12 @@
             var url = selectedUserId === 0 ? '/api/messages' : '/api/messages/' + selectedUserId;
             var userId = selectedUserId;
 
+            console.log('[loadMessages] Загрузка:', url, 'userId:', userId);
+
             // Сохраняем текущую позицию прокрутки
             var container = document.getElementById('messagesContainer');
             var wasAtBottom = container ? (container.scrollHeight - container.scrollTop - container.clientHeight < 100) : true;
-            
+
             // Сохраняем текущую позицию воспроизведения
             var savedTime = 0;
             if (currentAudio && playingMsgId) {
@@ -2179,14 +2127,19 @@
 
             apiFetch(url)
                 .then(function(r) {
-                    if (!r.ok) throw new Error('HTTP ' + r.status);
+                    console.log('[loadMessages] Ответ сервера:', r.status, r.ok);
+                    if (!r.ok) {
+                        return r.text().then(function(text) {
+                            throw new Error('HTTP ' + r.status + ': ' + text);
+                        });
+                    }
                     return r.json();
                 })
                 .then(function(data) {
-                    console.log('[API] Загружено сообщений:', data.length);
-                    data.forEach(function(msg) {
-                        console.log('[API] Сообщение id=' + msg.id + ', file_type=' + msg.file_type + ', content=' + (msg.content ? msg.content.substring(0, 80) : 'null'));
-                    });
+                    console.log('[loadMessages] Загружено сообщений:', data.length);
+                    if (data.length > 0) {
+                        console.log('[loadMessages] Первое сообщение:', data[0]);
+                    }
                     messages = data;
                     renderMessages();
                     
@@ -2200,10 +2153,10 @@
                     }
                 })
                 .catch(function(err) {
-                    console.error('Ошибка загрузки:', err);
+                    console.error('[loadMessages] Ошибка загрузки:', err);
                     getMessagesFromCache(userId).then(function(cached) {
                         if (cached && cached.length > 0) {
-                            console.log('[Offline] Из кэша:', cached.length);
+                            console.log('[loadMessages] Восстановлено из кэша:', cached.length);
                             messages = cached;
                             renderMessages();
                             
@@ -2608,9 +2561,25 @@
 
             if (selectedFileData) {
                 var formData = new FormData();
-                formData.append('file', selectedFile);
+                var fileToSend = selectedFile;
+                if (!fileToSend && selectedFileData) {
+                    // Если файла нет, но есть data — конвертируем
+                    try {
+                        var byteString = atob(selectedFileData.split(',')[1]);
+                        var mimeString = selectedFileData.split(',')[0].split(':')[1].split(';')[0];
+                        var ab = new ArrayBuffer(byteString.length);
+                        var ia = new Uint8Array(ab);
+                        for (var i = 0; i < byteString.length; i++) {
+                            ia[i] = byteString.charCodeAt(i);
+                        }
+                        fileToSend = new Blob([ab], { type: mimeString });
+                    } catch(e) {
+                        alert('Ошибка подготовки файла');
+                        return;
+                    }
+                }
+                formData.append('file', fileToSend, selectedFileType === 'image' ? 'image.jpg' : 'file');
                 formData.append('recipient_id', selectedUserId === 0 ? null : selectedUserId);
-                formData.append('file_data', selectedFileData);
                 formData.append('file_type', selectedFileType);
 
                 var btn = document.getElementById('sendBtn');
@@ -2620,7 +2589,7 @@
                 addMessageToDOM({
                     id: tempId,
                     sender: currentUser.username,
-                    content: selectedFile ? selectedFile.name : content,
+                    content: (selectedFile ? selectedFile.name : 'файл'),
                     created_at: new Date().toLocaleTimeString('ru-RU', {hour: '2-digit', minute:'2-digit'}),
                     is_mine: true,
                     file_type: selectedFileType,
@@ -2655,14 +2624,29 @@
                 status: 'sending'
             });
 
-            apiFetch('/api/send', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ recipient_id: selectedUserId === 0 ? null : selectedUserId, content: content }) })
-            .then(function(r) { if (!r.ok) throw new Error('Ошибка: ' + r.status); return r.json(); })
+            var payload = { recipient_id: selectedUserId === 0 ? null : selectedUserId, content: content };
+            console.log('[sendMessage] Отправка:', payload);
+
+            apiFetch('/api/send', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) })
+            .then(function(r) {
+                if (!r.ok) {
+                    // Попробуем прочитать ответ сервера
+                    return r.text().then(function(text) {
+                        throw new Error('HTTP ' + r.status + ': ' + text);
+                    });
+                }
+                return r.json();
+            })
             .then(function(result) {
                 if (result.success) { loadMessages(); loadLastMessages(); }
                 else { alert('Ошибка: ' + (result.message || 'Неизвестная ошибка')); }
                 btn.disabled = false;
             })
-            .catch(function(err) { alert('Ошибка: ' + err.message); btn.disabled = false; });
+            .catch(function(err) {
+                console.error('Ошибка отправки:', err);
+                alert('Ошибка: ' + err.message);
+                btn.disabled = false;
+            });
         }
 
         function sendVoiceOrText() {
@@ -3417,15 +3401,22 @@
                     .then(function(usersList) {
                         var promises = [];
 
+                        console.log('[Preload] Загружаем общий чат...');
                         promises.push(
                             apiFetch('/api/messages')
-                                .then(function(r) { return r.json(); })
+                                .then(function(r) {
+                                    console.log('[Preload] Общий чат:', r.status);
+                                    return r.json();
+                                })
                                 .then(function(data) {
+                                    console.log('[Preload] Общий чат сообщений:', data.length);
                                     if (data && data.length > 0) {
                                         saveMessagesToCache(data, 0).catch(console.error);
                                     }
                                 })
-                                .catch(console.error)
+                                .catch(function(err) {
+                                    console.error('[Preload] Ошибка общего чата:', err);
+                                })
                         );
 
                         usersList.forEach(function(user) {
@@ -4318,9 +4309,6 @@
                 if (e.key === 'Enter') sendMessage();
             });
         }
-
-        var loginBtn = document.getElementById('loginBtn');
-        if (loginBtn) loginBtn.addEventListener('click', login);
 
         var notificationsBtn = document.getElementById('notificationsBtn');
         if (notificationsBtn) notificationsBtn.addEventListener('click', openNotificationsModal);
