@@ -466,6 +466,147 @@
         .chat-title-status.online {
             color: #1db418;
         }
+        .call-btn {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: var(--bg);
+            color: var(--text-secondary);
+            border: none;
+            cursor: pointer;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            transition: color 0.2s, transform 0.15s;
+        }
+        .call-btn:hover {
+            color: #1db418;
+            transform: scale(1.1);
+        }
+        .call-btn.visible {
+            display: flex;
+        }
+        .call-modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(15, 23, 42, 0.95);
+            z-index: 2000;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+        }
+        .call-modal-overlay.show {
+            display: flex;
+        }
+        .call-modal {
+            text-align: center;
+            color: white;
+            padding: 40px;
+        }
+        .call-avatar {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            background: #6366f1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 48px;
+            font-weight: 700;
+            color: white;
+            margin: 0 auto 24px;
+            background-size: cover;
+            background-position: center;
+            animation: call-pulse 2s ease-in-out infinite;
+        }
+        @keyframes call-pulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.4); }
+            50% { box-shadow: 0 0 0 20px rgba(99, 102, 241, 0); }
+        }
+        .call-name {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+        .call-status {
+            font-size: 16px;
+            color: rgba(255,255,255,0.7);
+            margin-bottom: 12px;
+        }
+        .call-timer {
+            font-size: 18px;
+            font-weight: 600;
+            color: #1db418;
+            margin-bottom: 40px;
+            display: none;
+        }
+        .call-timer.active {
+            display: block;
+        }
+        .call-controls {
+            display: flex;
+            gap: 24px;
+            justify-content: center;
+            align-items: center;
+        }
+        .call-ctrl-btn {
+            width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            transition: transform 0.15s, background 0.2s;
+        }
+        .call-ctrl-btn:hover {
+            transform: scale(1.1);
+        }
+        .call-ctrl-btn.mute {
+            background: rgba(255,255,255,0.15);
+            color: white;
+        }
+        .call-ctrl-btn.mute.muted {
+            background: #ef4444;
+        }
+        .call-ctrl-btn.accept {
+            background: #1db418;
+            color: white;
+            width: 72px;
+            height: 72px;
+            font-size: 28px;
+        }
+        .call-ctrl-btn.hangup {
+            background: #ef4444;
+            color: white;
+            width: 72px;
+            height: 72px;
+            font-size: 28px;
+        }
+        .call-ctrl-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+        /* Входящий звонок */
+        .incoming-call-controls {
+            display: flex;
+            gap: 40px;
+            justify-content: center;
+            align-items: center;
+        }
+        .incoming-label {
+            font-size: 14px;
+            color: #1db418;
+            margin-bottom: 4px;
+        }
         .messages {
             flex: 1;
             overflow-y: auto;
@@ -939,6 +1080,9 @@
             .chat-title-status {
                 font-size: 13px;
             }
+            .call-btn {
+                display: flex;
+            }
             .users-panel {
                 width: 100%;
                 height: 100%;
@@ -1053,6 +1197,15 @@
             .file-preview { max-width: 200px; padding: 6px 10px; }
             .file-preview-name { font-size: 12px; max-width: 150px; }
             .chat-img { max-width: 100%; }
+            .call-btn { display: flex !important; }
+            .call-controls { gap: 16px; }
+            .call-ctrl-btn { width: 56px; height: 56px; font-size: 20px; }
+            .call-ctrl-btn.accept,
+            .call-ctrl-btn.hangup { width: 64px; height: 64px; font-size: 24px; }
+            .call-modal { padding: 20px; }
+            .call-avatar { width: 100px; height: 100px; font-size: 40px; }
+            .call-name { font-size: 22px; }
+            .incoming-call-controls { gap: 24px; }
         }
         @media (max-width: 400px) {
             .header { padding: 8px 10px; }
@@ -1300,6 +1453,11 @@
                                 <div class="chat-title-status" id="chatTitleStatus"></div>
                             </div>
                         </div>
+                        <button class="call-btn" id="callBtn" onclick="startCall()" title="Позвонить">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/>
+                            </svg>
+                        </button>
                     </div>
 
                     <div class="messages" id="messagesContainer">
@@ -1448,6 +1606,48 @@
         </div>
     </div>
 
+    <!-- Call Modal -->
+    <div id="callModal" class="call-modal-overlay">
+        <div class="call-modal">
+            <div class="call-avatar" id="callAvatar">A</div>
+            <div class="call-name" id="callName">User</div>
+            <div class="incoming-label" id="incomingLabel" style="display:none;">📞 Входящий звонок...</div>
+            <div class="call-status" id="callStatus">Вызов...</div>
+            <div class="call-timer" id="callTimer">00:00</div>
+
+            <!-- Обычные элементы управления (исходящий/разговор) -->
+            <div class="call-controls" id="callControls">
+                <button class="call-ctrl-btn mute" id="callMuteBtn" onclick="toggleCallMute()" title="Микрофон">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 14c1.66 0 2.99-1.34 2.99-3L15 5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z"/>
+                    </svg>
+                </button>
+                <button class="call-ctrl-btn hangup" id="callHangupBtn" onclick="endCall()" title="Завершить">
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08c-.18-.17-.29-.42-.29-.7 0-.28.11-.53.29-.71C3.34 8.78 7.46 7 12 7s8.66 1.78 11.71 4.67c.18.18.29.43.29.71 0 .28-.11.53-.29.71l-2.48 2.48c-.18.18-.43.29-.71.29-.27 0-.52-.11-.7-.28-.79-.74-1.69-1.36-2.67-1.85-.33-.16-.56-.5-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z"/>
+                    </svg>
+                </button>
+            </div>
+
+            <!-- Элементы для входящего звонка -->
+            <div class="incoming-call-controls" id="incomingControls" style="display:none;">
+                <button class="call-ctrl-btn hangup" onclick="rejectCall()" title="Отклонить">
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08c-.18-.17-.29-.42-.29-.7 0-.28.11-.53.29-.71C3.34 8.78 7.46 7 12 7s8.66 1.78 11.71 4.67c.18.18.29.43.29.71 0 .28-.11.53-.29.71l-2.48 2.48c-.18.18-.43.29-.71.29-.27 0-.52-.11-.7-.28-.79-.74-1.69-1.36-2.67-1.85-.33-.16-.56-.5-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z"/>
+                    </svg>
+                </button>
+                <button class="call-ctrl-btn accept" onclick="acceptCall()" title="Принять">
+                    <svg width="36" height="36" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden audio element -->
+    <audio id="remoteAudio" autoplay></audio>
+
     <script>
         var currentUser = null;
         var users = [];
@@ -1479,6 +1679,23 @@
         var DB_VERSION = 1;
         var DB_NAME = 'JeteskMessagesDB';
         var STORE_NAME = 'messages';
+
+        // === WebRTC Audio Call ===
+        var peerConnection = null;
+        var localStream = null;
+        var callTimer = null;
+        var callSeconds = 0;
+        var isInCall = false;
+        var isCallMuted = false;
+        var isIncomingCall = false;
+        var callPollInterval = null;
+        var currentCallId = null;
+        var rtcConfig = {
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' }
+            ]
+        };
 
         function apiFetch(url, options) {
             options = options || {};
@@ -2033,6 +2250,8 @@
             renderUsers();
 
             loadMessages();
+
+            updateCallBtnVisibility();
 
             if (userId !== 0) {
                 markMessagesAsRead(userId);
@@ -3556,6 +3775,7 @@
             initTabs();
             showFooter();
             showChatsTab();
+            updateCallBtnVisibility();
         }
 
         var resizeTimeout;
@@ -4444,6 +4664,409 @@
             document.body.appendChild(notification);
             setTimeout(function() { notification.remove(); }, 10000);
         }
+
+        // ============================================
+        // === AUDIO CALL (WebRTC) ===
+        // ============================================
+
+        function updateCallBtnVisibility() {
+            var btn = document.getElementById('callBtn');
+            if (!btn) return;
+            // Показываем кнопку звонка только для личных чатов (не общий чат)
+            if (selectedUserId > 0) {
+                btn.classList.add('visible');
+            } else {
+                btn.classList.remove('visible');
+            }
+        }
+
+        function startCall() {
+            if (selectedUserId <= 0 || isInCall) return;
+            isInCall = true;
+            isIncomingCall = false;
+            currentCallId = 'call_' + Date.now();
+
+            showCallUI(selectedUserId, selectedUsername);
+            document.getElementById('callStatus').textContent = 'Вызов...';
+            document.getElementById('callControls').style.display = 'flex';
+            document.getElementById('incomingControls').style.display = 'none';
+            document.getElementById('incomingLabel').style.display = 'none';
+            document.getElementById('callTimer').classList.remove('active');
+
+            // Получаем аудио и создаём offer
+            getLocalAudio().then(function() {
+                createPeerConnection();
+                return peerConnection.createOffer();
+            }).then(function(offer) {
+                return peerConnection.setLocalDescription(offer);
+            }).then(function() {
+                // Отправляем offer через сервер
+                return apiFetch('/api/call/offer', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        call_id: currentCallId,
+                        to_user_id: selectedUserId,
+                        offer: peerConnection.localDescription
+                    })
+                });
+            }).then(function(r) {
+                if (!r.ok) throw new Error('Не удалось отправить вызов');
+                return r.json();
+            }).then(function(result) {
+                console.log('[Call] Offer отправлен');
+                document.getElementById('callStatus').textContent = 'Ожидание ответа...';
+                // Начинаем polling для получения answer
+                startCallPolling();
+            }).catch(function(err) {
+                console.error('[Call] Ошибка:', err);
+                endCall();
+            });
+        }
+
+        function getLocalAudio() {
+            return navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+                .then(function(stream) {
+                    localStream = stream;
+                    return stream;
+                });
+        }
+
+        function createPeerConnection() {
+            peerConnection = new RTCPeerConnection(rtcConfig);
+
+            // Добавляем локальный аудио трек
+            if (localStream) {
+                localStream.getTracks().forEach(function(track) {
+                    peerConnection.addTrack(track, localStream);
+                });
+            }
+
+            // Подключаем удалённый аудио к audio элементу
+            peerConnection.addEventListener('track', function(e) {
+                var remoteAudio = document.getElementById('remoteAudio');
+                remoteAudio.srcObject = e.streams[0];
+                remoteAudio.play().catch(function(){});
+            });
+
+            // ICE candidate — отправляем на сервер
+            peerConnection.addEventListener('icecandidate', function(e) {
+                if (e.candidate && currentCallId) {
+                    apiFetch('/api/call/ice', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            call_id: currentCallId,
+                            to_user_id: selectedUserId,
+                            candidate: e.candidate
+                        })
+                    }).catch(function(err) {
+                        console.error('[Call] ICE error:', err);
+                    });
+                }
+            });
+
+            peerConnection.addEventListener('connectionstatechange', function() {
+                console.log('[Call] Состояние:', peerConnection.connectionState);
+                if (peerConnection.connectionState === 'connected') {
+                    document.getElementById('callStatus').textContent = 'Разговор';
+                    startCallTimer();
+                } else if (peerConnection.connectionState === 'disconnected' || peerConnection.connectionState === 'failed') {
+                    endCall();
+                }
+            });
+        }
+
+        function startCallPolling() {
+            if (callPollInterval) clearInterval(callPollInterval);
+            callPollInterval = setInterval(function() {
+                if (!isInCall || isIncomingCall) return;
+                apiFetch('/api/call/status/' + currentCallId)
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        if (!data || !data.status) return;
+                        if (data.status === 'rejected' || data.status === 'missed') {
+                            document.getElementById('callStatus').textContent = 'Абонент не ответил';
+                            setTimeout(function() { endCall(); }, 1500);
+                        } else if (data.status === 'accepted' && data.answer) {
+                            // Получили answer
+                            stopCallPolling();
+                            return peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer))
+                                .then(function() {
+                                    document.getElementById('callStatus').textContent = 'Подключение...';
+                                });
+                        }
+                    })
+                    .catch(function(err) {
+                        console.error('[Call] Poll error:', err);
+                    });
+            }, 1000);
+        }
+
+        function stopCallPolling() {
+            if (callPollInterval) {
+                clearInterval(callPollInterval);
+                callPollInterval = null;
+            }
+        }
+
+        // Проверка входящих звонков
+        function checkIncomingCalls() {
+            if (isInCall) return;
+            apiFetch('/api/call/incoming')
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (!data || !data.call_id) return;
+
+                    // Входящий звонок!
+                    isInCall = true;
+                    isIncomingCall = true;
+                    currentCallId = data.call_id;
+                    selectedUserId = data.from_user_id;
+                    selectedUsername = data.from_user_name || 'Пользователь';
+
+                    showCallUI(selectedUserId, selectedUsername);
+                    document.getElementById('callStatus').textContent = 'Входящий звонок...';
+                    document.getElementById('callControls').style.display = 'none';
+                    document.getElementById('incomingControls').style.display = 'flex';
+                    document.getElementById('incomingLabel').style.display = 'block';
+                    document.getElementById('callTimer').classList.remove('active');
+
+                    // Звуковой сигнал входящего
+                    playIncomingRingtone();
+                })
+                .catch(function(){});
+        }
+
+        function acceptCall() {
+            if (!currentCallId) return;
+            stopIncomingRingtone();
+
+            getLocalAudio().then(function() {
+                createPeerConnection();
+                // Отправляем сигнал что приняли
+                return apiFetch('/api/call/accept', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ call_id: currentCallId })
+                });
+            }).then(function(r) { return r.json(); })
+            .then(function(data) {
+                document.getElementById('incomingControls').style.display = 'none';
+                document.getElementById('incomingLabel').style.display = 'none';
+                document.getElementById('callControls').style.display = 'flex';
+
+                if (data && data.offer) {
+                    return peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer))
+                        .then(function() {
+                            return peerConnection.createAnswer();
+                        })
+                        .then(function(answer) {
+                            return peerConnection.setLocalDescription(answer);
+                        })
+                        .then(function() {
+                            return apiFetch('/api/call/answer', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    call_id: currentCallId,
+                                    answer: peerConnection.localDescription
+                                })
+                            });
+                        });
+                }
+            })
+            .then(function() {
+                document.getElementById('callStatus').textContent = 'Подключение...';
+                // Начинаем polling ICE candidates
+                startIncomingPolling();
+            })
+            .catch(function(err) {
+                console.error('[Call] Accept error:', err);
+                endCall();
+            });
+        }
+
+        function rejectCall() {
+            if (!currentCallId) return;
+            stopIncomingRingtone();
+            apiFetch('/api/call/reject', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ call_id: currentCallId })
+            }).catch(function(){});
+            endCall();
+        }
+
+        function startIncomingPolling() {
+            if (callPollInterval) clearInterval(callPollInterval);
+            callPollInterval = setInterval(function() {
+                if (!isInCall) return;
+                apiFetch('/api/call/ice/' + currentCallId)
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        if (data && data.candidates && peerConnection) {
+                            data.candidates.forEach(function(c) {
+                                peerConnection.addIceCandidate(new RTCIceCandidate(c))
+                                    .catch(function(){});
+                            });
+                        }
+                    })
+                    .catch(function(){});
+            }, 1000);
+        }
+
+        function endCall() {
+            isInCall = false;
+            isIncomingCall = false;
+            stopCallTimer();
+            stopCallPolling();
+            stopIncomingRingtone();
+
+            // Закрываем peer connection
+            if (peerConnection) {
+                peerConnection.close();
+                peerConnection = null;
+            }
+
+            // Останавливаем локальный стрим
+            if (localStream) {
+                localStream.getTracks().forEach(function(track) { track.stop(); });
+                localStream = null;
+            }
+
+            // Уведомляем сервер
+            if (currentCallId) {
+                apiFetch('/api/call/end', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ call_id: currentCallId })
+                }).catch(function(){});
+                currentCallId = null;
+            }
+
+            // Скрываем UI
+            hideCallUI();
+        }
+
+        function toggleCallMute() {
+            if (!localStream) return;
+            isCallMuted = !isCallMuted;
+            localStream.getAudioTracks().forEach(function(track) {
+                track.enabled = !isCallMuted;
+            });
+            var btn = document.getElementById('callMuteBtn');
+            if (isCallMuted) {
+                btn.classList.add('muted');
+                btn.innerHTML = '<svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M19 11h-1.7c0 .74-.16 1.43-.43 2.05l1.23 1.23c.56-.98.9-2.09.9-3.28zm-2.31.31l-1.63-1.63C14.42 8.63 13.31 8 12 8c-1.61 0-2.98.89-3.64 2.2l2.06 2.06C10.15 12.09 10 11.56 10 11c0-.51.13-.99.37-1.4l6.32 6.32V19h2v-3.17l1.96 1.96c.15-.32.24-.67.24-1.04 0-.28-.06-.55-.17-.79l-2.03-2.03zM12 14c.51 0 .99-.13 1.41-.37l-1.04-1.04c-.12.03-.24.04-.37.04-.72 0-1.37-.29-1.84-.77L8.58 10.29C7.8 10.82 7.2 11.59 6.91 12.5L12 17.59V14zM4.41 2.86L3 4.27l6 6V11c0 1.66 1.34 3 3 3 .23 0 .44-.03.65-.08l1.66 1.66c-.71.33-1.5.52-2.31.52-2.76 0-5.3-2.1-5.3-5.1H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c.91-.13 1.77-.45 2.55-.9l4.18 4.18 1.41-1.41L4.41 2.86z"/></svg>';
+            } else {
+                btn.classList.remove('muted');
+                btn.innerHTML = '<svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M12 14c1.66 0 2.99-1.34 2.99-3L15 5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z"/></svg>';
+            }
+        }
+
+        function startCallTimer() {
+            callSeconds = 0;
+            document.getElementById('callTimer').classList.add('active');
+            callTimer = setInterval(function() {
+                callSeconds++;
+                var m = Math.floor(callSeconds / 60);
+                var s = callSeconds % 60;
+                document.getElementById('callTimer').textContent =
+                    (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
+            }, 1000);
+        }
+
+        function stopCallTimer() {
+            if (callTimer) {
+                clearInterval(callTimer);
+                callTimer = null;
+            }
+            callSeconds = 0;
+            document.getElementById('callTimer').classList.remove('active');
+            document.getElementById('callTimer').textContent = '00:00';
+        }
+
+        function showCallUI(userId, username) {
+            var overlay = document.getElementById('callModal');
+            var avatarEl = document.getElementById('callAvatar');
+            var nameEl = document.getElementById('callName');
+
+            nameEl.textContent = username;
+
+            // Устанавливаем аватар
+            var targetUser = null;
+            for (var i = 0; i < users.length; i++) {
+                if (users[i].id === userId) {
+                    targetUser = users[i];
+                    break;
+                }
+            }
+            if (targetUser && targetUser.avatar_url) {
+                avatarEl.style.backgroundImage = 'url(' + targetUser.avatar_url + ')';
+                avatarEl.style.backgroundSize = 'cover';
+                avatarEl.style.backgroundPosition = 'center';
+                avatarEl.textContent = '';
+            } else {
+                avatarEl.style.backgroundImage = '';
+                avatarEl.style.background = '#' + (targetUser ? targetUser.avatar_color || '6366f1' : '6366f1');
+                avatarEl.textContent = (username || '?').charAt(0).toUpperCase();
+            }
+
+            overlay.classList.add('show');
+        }
+
+        function hideCallUI() {
+            document.getElementById('callModal').classList.remove('show');
+            document.getElementById('callStatus').textContent = '';
+            document.getElementById('callControls').style.display = 'none';
+            document.getElementById('incomingControls').style.display = 'none';
+            document.getElementById('incomingLabel').style.display = 'none';
+            document.getElementById('callMuteBtn').classList.remove('muted');
+            document.getElementById('callMuteBtn').innerHTML = '<svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M12 14c1.66 0 2.99-1.34 2.99-3L15 5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z"/></svg>';
+        }
+
+        // Ringtone (простой звук через oscillator)
+        var ringtoneCtx = null;
+        var ringtoneOsc = null;
+
+        function playIncomingRingtone() {
+            try {
+                ringtoneCtx = new (window.AudioContext || window.webkitAudioContext)();
+                function beep() {
+                    if (!ringtoneCtx || !isIncomingCall) return;
+                    ringtoneOsc = ringtoneCtx.createOscillator();
+                    var gain = ringtoneCtx.createGain();
+                    ringtoneOsc.connect(gain);
+                    gain.connect(ringtoneCtx.destination);
+                    ringtoneOsc.frequency.value = 440;
+                    ringtoneOsc.type = 'sine';
+                    gain.gain.value = 0.3;
+                    ringtoneOsc.start();
+                    ringtoneOsc.stop(ringtoneCtx.currentTime + 0.5);
+                    setTimeout(function() {
+                        if (isIncomingCall) beep();
+                    }, 1500);
+                }
+                beep();
+            } catch(e) {
+                console.error('[Call] Ringtone error:', e);
+            }
+        }
+
+        function stopIncomingRingtone() {
+            if (ringtoneCtx) {
+                ringtoneCtx.close();
+                ringtoneCtx = null;
+            }
+        }
+
+        // Запускаем проверку входящих звонков
+        setInterval(function() {
+            if (!isInCall && currentUser) {
+                checkIncomingCalls();
+            }
+        }, 2000);
 
         init();
     </script>
