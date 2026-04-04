@@ -1197,35 +1197,30 @@ def api_delete_user_account():
         return jsonify({'success': False, 'message': 'Not authorized'}), 401
 
     user_id = user.id
-    db = get_db()
-    try:
-        # Этап 1: Удаляем дочерние записи (до commit)
-        db.query(PushSubscription).filter_by(user_id=user_id).delete(synchronize_session=False)
-        db.query(Device).filter_by(user_id=user_id).delete(synchronize_session=False)
-        db.query(Call).filter(
-            (Call.caller_id == user_id) | (Call.callee_id == user_id)
-        ).delete(synchronize_session=False)
-        db.query(Notification).filter(
-            (Notification.user_id == user_id) | (Notification.sender_id == user_id)
-        ).delete(synchronize_session=False)
-        db.query(Message).filter(
-            (Message.sender_id == user_id) | (Message.recipient_id == user_id)
-        ).delete(synchronize_session=False)
-        db.commit()  # Коммитим удаление дочерних
+    db.close()  # Закрываем ORM сессию — будем через engine
 
-        # Этап 2: Теперь удаляем пользователя
-        db.query(User).filter_by(id=user_id).delete(synchronize_session=False)
-        db.commit()
+    try:
+        from sqlalchemy import text
+
+        # Raw SQL через engine — полностью绕过 ORM и FK issues
+        with engine.connect() as conn:
+            # Сначала дочерние таблицы
+            conn.execute(text("DELETE FROM push_subscriptions WHERE user_id = :uid"), {"uid": user_id})
+            conn.execute(text("DELETE FROM devices WHERE user_id = :uid"), {"uid": user_id})
+            conn.execute(text("DELETE FROM calls WHERE caller_id = :uid OR callee_id = :uid"), {"uid": user_id})
+            conn.execute(text("DELETE FROM notifications WHERE user_id = :uid OR sender_id = :uid"), {"uid": user_id})
+            conn.execute(text("DELETE FROM messages WHERE sender_id = :uid OR recipient_id = :uid"), {"uid": user_id})
+
+            # Теперь пользователь
+            conn.execute(text("DELETE FROM users WHERE id = :uid"), {"uid": user_id})
+            conn.commit()
 
         resp = make_response(jsonify({'success': True}))
         resp.set_cookie('user_id', '', max_age=0)
         return resp
     except Exception as e:
-        db.rollback()
         print(f"[Delete account] Error: {e}")
         return jsonify({'success': False, 'message': str(e)}), 500
-    finally:
-        db.close()
 
 @app.route('/api/username/check', methods=['POST'])
 def api_username_check():
