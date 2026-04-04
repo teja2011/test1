@@ -124,6 +124,19 @@ class Notification(Base):
     is_read = Column(Integer, default=0)
     created_at = Column(DateTime, default=utc_now)
 
+class Call(Base):
+    __tablename__ = 'calls'
+    id = Column(Integer, primary_key=True)
+    call_id = Column(String(100), unique=True, nullable=False, index=True)
+    caller_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    callee_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    status = Column(String(20), default='ringing')  # ringing, accepted, rejected, ended, missed
+    offer_data = Column(String, nullable=True)  # JSON WebRTC offer
+    answer_data = Column(String, nullable=True)  # JSON WebRTC answer
+    ice_candidates = Column(String, nullable=True)  # JSON array of ICE candidates
+    created_at = Column(DateTime, default=utc_now)
+    ended_at = Column(DateTime, nullable=True)
+
 def init_db():
     check_and_create_tables()
     print("Database initialized with tables: users, messages, notifications")
@@ -152,23 +165,23 @@ def init_tables():
         
         # Создаём таблицы
         Base.metadata.create_all(engine)
-        
+
         # Проверяем что таблицы созданы
         with engine.connect() as conn:
             if DATABASE_URL:
                 result = conn.execute(text("""
-                    SELECT table_name FROM information_schema.tables 
-                    WHERE table_schema = 'public' AND table_name IN ('users', 'messages', 'notifications')
+                    SELECT table_name FROM information_schema.tables
+                    WHERE table_schema = 'public' AND table_name IN ('users', 'messages', 'notifications', 'calls')
                 """))
             else:
                 result = conn.execute(text("""
-                    SELECT name FROM sqlite_master WHERE type='table' AND name IN ('users', 'messages', 'notifications')
+                    SELECT name FROM sqlite_master WHERE type='table' AND name IN ('users', 'messages', 'notifications', 'calls')
                 """))
             tables = [row[0] for row in result.fetchall()]
             print(f"Созданы таблицы: {', '.join(tables)}")
-            
-            if len(tables) < 3:
-                raise Exception(f"Не все таблицы созданы! Найдено: {len(tables)}, ожидается: 3")
+
+            if len(tables) < 4:
+                raise Exception(f"Не все таблицы созданы! Найдено: {len(tables)}, ожидается: 4")
                 
         print("=== БД готова к работе ===")
         return True
@@ -273,35 +286,84 @@ def api_me():
 
 @app.route('/api/register', methods=['POST'])
 def api_register():
-    data = request.json
-    username = data.get('username', '').strip()
-    password = data.get('password', '')
-    
+    # Поддержка и JSON, и FormData
+    if request.content_type and 'multipart/form-data' in request.content_type:
+        name = request.form.get('name', '').strip()
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '')
+        avatar_color = request.form.get('avatar_color', generate_avatar_color())
+        avatar_file = request.files.get('avatar_file')
+        avatar_data = request.form.get('avatar_data')
+    else:
+        data = request.json
+        name = data.get('name', data.get('username', '')).strip()
+        username = data.get('username', '').strip()
+        password = data.get('password', '')
+        avatar_color = generate_avatar_color()
+        avatar_file = None
+        avatar_data = None
+
     print(f"=== РЕГИСТРАЦИЯ ===")
-    print(f"Username: {username}")
+    print(f"Name: {name}, Username: {username}")
     print(f"Password получен: {'да' if password else 'нет'}")
-    print(f"Длина пароля: {len(password) if password else 0}")
-    
-    if not username or len(username) < 2:
+    print(f"Avatar color: {avatar_color}")
+
+    if not name or len(name) < 2:
         return jsonify({'success': False, 'message': 'Имя слишком короткое'})
+    if not username or len(username) < 5:
+        return jsonify({'success': False, 'message': 'Username должен быть 5-32 символа'})
     if not password or len(password) < 6:
         return jsonify({'success': False, 'message': 'Пароль должен быть не менее 6 символов'})
-    
+
     db = get_db()
     try:
         existing = db.query(User).filter_by(username=username).first()
         if existing:
-            return jsonify({'success': False, 'message': 'Пользователь уже существует'})
-        
+            return jsonify({'success': False, 'message': 'Username уже занят'})
+
         password_hash = generate_password_hash(password)
-        print(f"password_hash сгенерирован: {password_hash[:50]}...")
-        
-        user = User(username=username, password_hash=password_hash, avatar_color=generate_avatar_color())
+
+        avatar_url = None
+        # Загрузка аватарки через Cloudinary
+        if avatar_file and CLOUDINARY_CONFIGURED:
+            try:
+                import cloudinary.uploader
+                result = cloudinary.uploader.upload(
+                    avatar_file.stream,
+                    folder='jtesk/avatars',
+                    resource_type='image'
+                )
+                avatar_url = result['secure_url']
+            except Exception as e:
+                print(f"[Register] Avatar upload error: {e}")
+        elif avatar_data and CLOUDINARY_CONFIGURED:
+            try:
+                import cloudinary.uploader
+                import base64
+                if avatar_data.startswith('data:'):
+                    avatar_data = avatar_data.split(',', 1)[1]
+                img_bytes = base64.b64decode(avatar_data)
+                import io
+                result = cloudinary.uploader.upload(
+                    io.BytesIO(img_bytes),
+                    folder='jtesk/avatars',
+                    resource_type='image'
+                )
+                avatar_url = result['secure_url']
+            except Exception as e:
+                print(f"[Register] Avatar upload error: {e}")
+
+        user = User(
+            username=name,  # Отображаемое имя
+            password_hash=password_hash,
+            avatar_color=avatar_color,
+            avatar_url=avatar_url,
+            jt_username=username  # Уникальный username
+        )
         db.add(user)
         db.commit()
-        
-        print(f"Пользователь создан: id={user.id}, username={user.username}")
-        print(f"password_hash в БД: {user.password_hash[:50] if user.password_hash else 'NULL'}...")
+
+        print(f"Пользователь создан: id={user.id}, name={user.username}, jt_username={user.jt_username}")
 
         resp = make_response(jsonify({'success': True, 'user': {
             'id': user.id,
@@ -311,7 +373,6 @@ def api_register():
             'jt_username': user.jt_username
         }}))
         resp.set_cookie('user_id', str(user.id), max_age=60*60*24*30, samesite='lax')
-        resp.delete_cookie('username')  # Удаляем старый cookie
         return resp
     except Exception as e:
         db.rollback()
@@ -1220,6 +1281,271 @@ def serve_sw():
 def serve_manifest():
     """PWA manifest"""
     return send_from_directory(os.path.abspath(os.path.dirname(__file__)), 'manifest.json', mimetype='application/json')
+
+# ============================================
+# === CALL (Audio Call) API ===
+# ============================================
+
+@app.route('/api/call/offer', methods=['POST'])
+def api_call_offer():
+    """Начать звонок — отправляем WebRTC offer"""
+    import json
+    db = get_db()
+    try:
+        user_id = request.cookies.get('user_id')
+        if not user_id:
+            return jsonify({'success': False, 'message': 'Not authorized'}), 401
+
+        data = request.get_json()
+        call_id = data.get('call_id')
+        to_user_id = data.get('to_user_id')
+        offer = data.get('offer')
+
+        if not call_id or not to_user_id or not offer:
+            return jsonify({'success': False, 'message': 'Missing fields'}), 400
+
+        # Проверяем что пользователь существует
+        callee = db.query(User).filter_by(id=int(to_user_id)).first()
+        if not callee:
+            return jsonify({'success': False, 'message': 'User not found'}), 404
+
+        call = db.query(Call).filter_by(call_id=call_id).first()
+        if not call:
+            call = Call(
+                call_id=call_id,
+                caller_id=int(user_id),
+                callee_id=int(to_user_id),
+                status='ringing',
+                offer_data=json.dumps(offer)
+            )
+            db.add(call)
+        else:
+            call.offer_data = json.dumps(offer)
+            call.status = 'ringing'
+
+        db.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        db.rollback()
+        print(f"[Call/Offer] Error: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+    finally:
+        db.close()
+
+@app.route('/api/call/status/<call_id>', methods=['GET'])
+def api_call_status(call_id):
+    """Проверить статус звонка (для исходящего)"""
+    import json
+    db = get_db()
+    try:
+        call = db.query(Call).filter_by(call_id=call_id).first()
+        if not call:
+            return jsonify({'status': 'not_found'}), 404
+
+        result = {'status': call.status}
+        if call.status == 'accepted' and call.answer_data:
+            result['answer'] = json.loads(call.answer_data)
+
+        return jsonify(result)
+    except Exception as e:
+        print(f"[Call/Status] Error: {e}")
+        return jsonify({'status': 'error'}), 500
+    finally:
+        db.close()
+
+@app.route('/api/call/ice', methods=['POST'])
+def api_call_ice():
+    """Отправить ICE candidate"""
+    import json
+    db = get_db()
+    try:
+        user_id = request.cookies.get('user_id')
+        if not user_id:
+            return jsonify({'success': False, 'message': 'Not authorized'}), 401
+
+        data = request.get_json()
+        call_id = data.get('call_id')
+        candidate = data.get('candidate')
+
+        if not call_id or not candidate:
+            return jsonify({'success': False, 'message': 'Missing fields'}), 400
+
+        call = db.query(Call).filter_by(call_id=call_id).first()
+        if not call:
+            return jsonify({'success': False, 'message': 'Call not found'}), 404
+
+        # Добавляем ICE candidate в список
+        candidates = []
+        if call.ice_candidates:
+            try:
+                candidates = json.loads(call.ice_candidates)
+            except:
+                candidates = []
+        candidates.append(candidate)
+        call.ice_candidates = json.dumps(candidates)
+
+        db.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        db.rollback()
+        print(f"[Call/ICE] Error: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+    finally:
+        db.close()
+
+@app.route('/api/call/incoming', methods=['GET'])
+def api_call_incoming():
+    """Проверить входящие звонки"""
+    import json
+    db = get_db()
+    try:
+        user_id = request.cookies.get('user_id')
+        if not user_id:
+            return jsonify({}), 200
+
+        # Ищем активные звонки где пользователь — callee
+        call = db.query(Call).filter(
+            Call.callee_id == int(user_id),
+            Call.status == 'ringing'
+        ).order_by(Call.created_at.desc()).first()
+
+        if not call:
+            return jsonify({}), 200
+
+        caller = db.query(User).filter_by(id=call.caller_id).first()
+        return jsonify({
+            'call_id': call.call_id,
+            'from_user_id': call.caller_id,
+            'from_user_name': caller.username if caller else 'Unknown',
+            'offer': json.loads(call.offer_data) if call.offer_data else None
+        })
+    except Exception as e:
+        print(f"[Call/Incoming] Error: {e}")
+        return jsonify({}), 500
+    finally:
+        db.close()
+
+@app.route('/api/call/accept', methods=['POST'])
+def api_call_accept():
+    """Принять звонок"""
+    db = get_db()
+    try:
+        data = request.get_json()
+        call_id = data.get('call_id')
+
+        call = db.query(Call).filter_by(call_id=call_id).first()
+        if not call:
+            return jsonify({'success': False, 'message': 'Call not found'}), 404
+
+        call.status = 'accepted'
+        db.commit()
+
+        # Возвращаем offer чтобы callee мог создать answer
+        import json
+        return jsonify({
+            'success': True,
+            'offer': json.loads(call.offer_data) if call.offer_data else None
+        })
+    except Exception as e:
+        db.rollback()
+        print(f"[Call/Accept] Error: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+    finally:
+        db.close()
+
+@app.route('/api/call/answer', methods=['POST'])
+def api_call_answer():
+    """Отправить WebRTC answer"""
+    import json
+    db = get_db()
+    try:
+        data = request.get_json()
+        call_id = data.get('call_id')
+        answer = data.get('answer')
+
+        if not call_id or not answer:
+            return jsonify({'success': False, 'message': 'Missing fields'}), 400
+
+        call = db.query(Call).filter_by(call_id=call_id).first()
+        if not call:
+            return jsonify({'success': False, 'message': 'Call not found'}), 404
+
+        call.answer_data = json.dumps(answer)
+        call.status = 'connected'
+        db.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        db.rollback()
+        print(f"[Call/Answer] Error: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+    finally:
+        db.close()
+
+@app.route('/api/call/reject', methods=['POST'])
+def api_call_reject():
+    """Отклонить звонок"""
+    db = get_db()
+    try:
+        data = request.get_json()
+        call_id = data.get('call_id')
+
+        call = db.query(Call).filter_by(call_id=call_id).first()
+        if call:
+            call.status = 'rejected'
+            db.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        db.rollback()
+        print(f"[Call/Reject] Error: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+    finally:
+        db.close()
+
+@app.route('/api/call/ice/<call_id>', methods=['GET'])
+def api_call_ice_poll(call_id):
+    """Получить ICE candidates"""
+    import json
+    db = get_db()
+    try:
+        call = db.query(Call).filter_by(call_id=call_id).first()
+        if not call:
+            return jsonify({'candidates': []}), 200
+
+        candidates = []
+        if call.ice_candidates:
+            try:
+                candidates = json.loads(call.ice_candidates)
+            except:
+                candidates = []
+
+        return jsonify({'candidates': candidates})
+    except Exception as e:
+        print(f"[Call/ICE poll] Error: {e}")
+        return jsonify({'candidates': []}), 500
+    finally:
+        db.close()
+
+@app.route('/api/call/end', methods=['POST'])
+def api_call_end():
+    """Завершить звонок"""
+    from datetime import datetime
+    db = get_db()
+    try:
+        data = request.get_json()
+        call_id = data.get('call_id')
+
+        call = db.query(Call).filter_by(call_id=call_id).first()
+        if call:
+            call.status = 'ended'
+            call.ended_at = utc_now()
+            db.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        db.rollback()
+        print(f"[Call/End] Error: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+    finally:
+        db.close()
 
 if __name__ == '__main__':
     import sys
