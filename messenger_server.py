@@ -1194,7 +1194,7 @@ def api_mark_read():
         db.close()
 
 @app.route('/api/settings/delete-account', methods=['POST'])
-def api_delete_account():
+def api_delete_user_account():
     """Удалить аккаунт и все связанные данные"""
     user = get_current_user()
     if not user:
