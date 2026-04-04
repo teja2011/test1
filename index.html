@@ -1454,6 +1454,7 @@
         var messages = [];
         var selectedUserId = 0;
         var selectedUsername = 'Общий чат';
+        var currentLoadUserId = null;  // ID чата, который сейчас загружается
         var selectedUserForPrivate = null;
         var refreshInterval = null;
         var onlineInterval = null;
@@ -2023,6 +2024,10 @@
             selectedUserId = userId;
             selectedUsername = username;
 
+            // Сбрасываем pending загрузку и счётчик
+            currentLoadUserId = null;
+            lastKnownMessageCount = 0;
+
             updateChatHeader();
 
             renderUsers();
@@ -2113,6 +2118,9 @@
             var url = selectedUserId === 0 ? '/api/messages' : '/api/messages/' + selectedUserId;
             var userId = selectedUserId;
 
+            // Запоминаем какой чат загружаем — если пользователь переключится, проигнорируем ответ
+            currentLoadUserId = userId;
+
             console.log('[loadMessages] Загрузка:', url, 'userId:', userId);
 
             // Сохраняем текущую позицию прокрутки
@@ -2127,6 +2135,11 @@
 
             apiFetch(url)
                 .then(function(r) {
+                    // Если пользователь уже переключился на другой чат — игнорируем ответ
+                    if (currentLoadUserId !== userId) {
+                        console.log('[loadMessages] Игнорируем ответ — пользователь переключился на', currentLoadUserId);
+                        return null;
+                    }
                     console.log('[loadMessages] Ответ сервера:', r.status, r.ok);
                     if (!r.ok) {
                         return r.text().then(function(text) {
@@ -2136,11 +2149,17 @@
                     return r.json();
                 })
                 .then(function(data) {
+                    // Если ответ был проигнорирован — выходим
+                    if (data === null) return;
+                    // Ещё раз проверяем актуальность
+                    if (currentLoadUserId !== userId) return;
+
                     console.log('[loadMessages] Загружено сообщений:', data.length);
                     if (data.length > 0) {
                         console.log('[loadMessages] Первое сообщение:', data[0]);
                     }
                     messages = data;
+                    lastKnownMessageCount = data.length;
                     renderMessages();
                     
                     // Восстанавливаем позицию воспроизведения
@@ -2154,6 +2173,9 @@
                 })
                 .catch(function(err) {
                     console.error('[loadMessages] Ошибка загрузки:', err);
+                    // Если пользователь переключился — не восстанавливаем из кэша
+                    if (currentLoadUserId !== userId) return;
+
                     getMessagesFromCache(userId).then(function(cached) {
                         if (cached && cached.length > 0) {
                             console.log('[loadMessages] Восстановлено из кэша:', cached.length);
@@ -2195,6 +2217,36 @@
             .catch(function(err) {
                 console.error('Ошибка отметки прочитанных:', err.message || err);
             });
+        }
+
+        // Проверка новых сообщений (не перезаписывает всё, а добавляет)
+        var lastKnownMessageCount = 0;
+
+        function checkNewMessages() {
+            var url = selectedUserId === 0 ? '/api/messages' : '/api/messages/' + selectedUserId;
+            var currentSelectedId = selectedUserId;
+
+            apiFetch(url)
+                .then(function(r) {
+                    if (!r.ok) return null;
+                    return r.json();
+                })
+                .then(function(data) {
+                    if (!data) return;
+                    // Если пользователь переключился — игнорируем
+                    if (selectedUserId !== currentSelectedId) return;
+
+                    if (data.length !== messages.length) {
+                        // Сообщения изменились — обновляем
+                        console.log('[checkNewMessages] Найдены изменения:', messages.length, '->', data.length);
+                        messages = data;
+                        lastKnownMessageCount = data.length;
+                        renderMessages();
+                    }
+                })
+                .catch(function(err) {
+                    console.error('[checkNewMessages] Ошибка:', err);
+                });
         }
 
         var messagesVirtualScroller = null;
@@ -3470,6 +3522,12 @@
             loadNotifications();
             updateOnlineStatus();
 
+            // Инициализируем счётчик после первой загрузки
+            setTimeout(function() {
+                lastKnownMessageCount = messages.length;
+                currentLoadUserId = selectedUserId;
+            }, 500);
+
             setTimeout(function() { scrollToBottom(); }, 100);
 
             // Очищаем старые интервалы
@@ -3488,12 +3546,12 @@
                 loadLastMessages();
             }, 1000);
 
-            // Обновляем текущие сообщения каждую секунду (если выбран чат)
+            // Проверяем новые сообщения каждые 3 секунды (не перезаписываем, а добавляем)
             messagesInterval = setInterval(function() {
-                if (selectedUserId !== null) {
-                    loadMessages();
+                if (currentLoadUserId !== null && currentLoadUserId === selectedUserId) {
+                    checkNewMessages();
                 }
-            }, 1000);
+            }, 3000);
 
             initTabs();
             showFooter();
