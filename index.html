@@ -427,6 +427,44 @@
             font-weight: 600;
             font-size: 16px;
             flex: 1;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .chat-title-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 16px;
+            color: white;
+            flex-shrink: 0;
+            background-size: cover;
+            background-position: center;
+        }
+        .chat-title-info {
+            display: flex;
+            flex-direction: column;
+            line-height: 1.3;
+            min-width: 0;
+        }
+        .chat-title-name {
+            font-weight: 600;
+            font-size: 16px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .chat-title-status {
+            font-size: 12px;
+            color: var(--text-secondary);
+            white-space: nowrap;
+        }
+        .chat-title-status.online {
+            color: #1db418;
         }
         .messages {
             flex: 1;
@@ -445,9 +483,41 @@
             display: flex;
             flex-direction: column;
             max-width: 60%;
+            position: relative;
         }
         .message.me { align-self: flex-end; align-items: flex-end; }
         .message.other { align-self: flex-start; align-items: flex-start; }
+        .message-row {
+            display: flex;
+            align-items: flex-end;
+            gap: 4px;
+        }
+        .message.me .message-row {
+            flex-direction: row-reverse;
+        }
+        .msg-more-btn {
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            flex-shrink: 0;
+            color: var(--text-secondary);
+            font-size: 14px;
+            line-height: 1;
+            transition: background 0.15s;
+        }
+        .msg-more-btn:hover {
+            background: rgba(128,128,128,0.2);
+        }
+        .message.me:hover .msg-more-btn {
+            display: flex;
+        }
         .message-bubble {
             padding: 12px 18px;
             border-radius: 18px;
@@ -846,9 +916,28 @@
             }
         }
         @media (max-width: 900px) {
+            .header { display: none !important; }
             .chat-body { flex-direction: column; }
             .chat-panel {
                 padding-bottom: 100px;
+            }
+            .chat-header {
+                padding: 14px 16px;
+            }
+            .chat-title {
+                gap: 12px;
+            }
+            .chat-title-avatar {
+                width: 42px;
+                height: 42px;
+                font-size: 18px;
+            }
+            .chat-title-name {
+                font-size: 18px;
+                font-weight: 700;
+            }
+            .chat-title-status {
+                font-size: 13px;
             }
             .users-panel {
                 width: 100%;
@@ -1205,10 +1294,11 @@
                     <div class="chat-header">
                         <button class="back-btn" id="backToChatsBtn" onclick="showUsersList()">←</button>
                         <div class="chat-title" id="chatTitle">
-                            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" style="vertical-align: middle; margin-right: 8px;">
-                                <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/>
-                            </svg>
-                            Общий чат
+                            <div class="chat-title-avatar" id="chatTitleAvatar" style="background: #6366f1;">A</div>
+                            <div class="chat-title-info">
+                                <div class="chat-title-name" id="chatTitleName">Общий чат</div>
+                                <div class="chat-title-status" id="chatTitleStatus"></div>
+                            </div>
                         </div>
                     </div>
 
@@ -1634,6 +1724,7 @@
                     renderUsers();
                     applySearchFilter();
                     loadLastMessages();
+                    updateChatHeader();
                 });
         }
 
@@ -1985,17 +2076,77 @@
         function selectUser(userId, username) {
             selectedUserId = userId;
             selectedUsername = username;
-            document.getElementById('chatTitle').textContent = '💬 ' + username;
+
+            updateChatHeader();
 
             renderUsers();
 
             loadMessages();
-            
+
             if (userId !== 0) {
                 markMessagesAsRead(userId);
             }
 
             showChatView();
+        }
+
+        function updateChatHeader() {
+            var avatarEl = document.getElementById('chatTitleAvatar');
+            var statusEl = document.getElementById('chatTitleStatus');
+            var nameEl = document.getElementById('chatTitleName');
+
+            if (selectedUserId === 0) {
+                if (nameEl) nameEl.textContent = 'Общий чат';
+                if (avatarEl) {
+                    avatarEl.style.background = '#6366f1';
+                    avatarEl.style.backgroundImage = '';
+                    avatarEl.textContent = '💬';
+                    avatarEl.style.fontSize = '20px';
+                }
+                if (statusEl) {
+                    statusEl.textContent = 'Все пользователи';
+                    statusEl.className = 'chat-title-status online';
+                }
+                return;
+            }
+
+            var targetUser = null;
+            for (var i = 0; i < users.length; i++) {
+                if (users[i].id === selectedUserId) {
+                    targetUser = users[i];
+                    break;
+                }
+            }
+            if (!targetUser) return;
+
+            if (nameEl) nameEl.textContent = targetUser.username || selectedUsername;
+
+            if (avatarEl) {
+                if (targetUser.avatar_url) {
+                    avatarEl.style.backgroundImage = 'url(' + targetUser.avatar_url + ')';
+                    avatarEl.style.backgroundSize = 'cover';
+                    avatarEl.style.backgroundPosition = 'center';
+                    avatarEl.textContent = '';
+                } else {
+                    avatarEl.style.backgroundImage = '';
+                    avatarEl.style.background = '#' + (targetUser.avatar_color || '6366f1');
+                    avatarEl.textContent = (targetUser.username || selectedUsername).charAt(0).toUpperCase();
+                    avatarEl.style.fontSize = '18px';
+                }
+            }
+
+            if (statusEl) {
+                if (targetUser.online || targetUser.is_online) {
+                    statusEl.textContent = 'В сети';
+                    statusEl.className = 'chat-title-status online';
+                } else if (targetUser.last_seen) {
+                    statusEl.textContent = 'Был(а) ' + targetUser.last_seen;
+                    statusEl.className = 'chat-title-status';
+                } else {
+                    statusEl.textContent = 'Не в сети';
+                    statusEl.className = 'chat-title-status';
+                }
+            }
         }
 
         function hideFooter() {
@@ -2139,14 +2290,17 @@
                 var statusIcon = msg.is_mine ? (msg.status === 'read' || msg.status === 'delivered' ? ' ✓✓' : msg.status === 'sent' ? ' ✓' : msg.status === 'sending' ? ' ⏳' : '') : '';
                 var moscowTime = msg.created_at;
                 if (msg.created_at && typeof msg.created_at === 'string' && msg.created_at.includes(':')) {
-                    var parts = msg.created_at.split(':'), hours = parseInt(parts[0]) + 3;
+                    var parts = msg.created_at.split(':'), hours = parseInt(parts[0]);
                     if (hours >= 24) hours -= 24;
                     moscowTime = (hours < 10 ? '0' + hours : hours) + ':' + parts[1];
                 }
 
-                html += '<div class="message ' + (msg.is_mine ? 'me' : 'other') + '" data-id="' + msg.id + '" style="padding:8px 16px;display:flex;' + (msg.is_mine ? 'justify-content:flex-end;' : 'justify-content:flex-start;') + '">' +
+                html += '<div class="message ' + (msg.is_mine ? 'me' : 'other') + '" data-id="' + msg.id + '" style="padding:8px 16px;">' +
+                    '<div class="message-row">' +
+                    (msg.is_mine ? '<button class="msg-more-btn" onclick="openMsgMenu(' + msg.id + ', event)" title="Ещё">⋮</button>' : '') +
                     '<div class="message-bubble" style="background:' + (msg.is_mine ? 'var(--primary)' : 'var(--surface)') + ';color:' + (msg.is_mine ? 'white' : 'var(--text)') + ';padding:10px 14px;border-radius:16px;max-width:70%;word-wrap:break-word;">' + bubbleContent + '</div>' +
-                    '<div class="message-time" style="font-size:11px;color:var(--text-secondary);margin-left:8px;align-self:flex-end;white-space:nowrap;">' + escapeHtml(msg.sender) + ' • ' + moscowTime + statusIcon + '</div></div>';
+                    '</div>' +
+                    '<div class="message-time" style="font-size:11px;color:var(--text-secondary);margin-top:4px;' + (msg.is_mine ? 'text-align:right;' : '') + 'white-space:nowrap;">' + escapeHtml(msg.sender) + ' • ' + moscowTime + statusIcon + '</div></div>';
             }
 
             html += '<div style="height:' + ((messages.length - endIndex) * ITEM_HEIGHT_MESSAGES) + 'px;"></div>';
@@ -2197,12 +2351,15 @@
                 var moscowTime = msg.created_at;
                 if (msg.created_at && typeof msg.created_at === 'string' && msg.created_at.includes(':')) {
                     var parts = msg.created_at.split(':');
-                    var hours = parseInt(parts[0]) + 3;
+                    var hours = parseInt(parts[0]);
                     if (hours >= 24) hours = hours - 24;
                     moscowTime = (hours < 10 ? '0' + hours : hours) + ':' + parts[1];
                 }
                 html += '<div class="message ' + (msg.is_mine ? 'me' : 'other') + '" data-id="' + msg.id + '">' +
+                    '<div class="message-row">' +
+                    (msg.is_mine ? '<button class="msg-more-btn" onclick="openMsgMenu(' + msg.id + ', event)" title="Ещё">⋮</button>' : '') +
                     '<div class="message-bubble">' + bubbleContent + '</div>' +
+                    '</div>' +
                     '<div class="message-time">' + escapeHtml(msg.sender) + ' • ' + moscowTime + statusIcon + '</div>' +
                     '</div>';
             });
@@ -2534,6 +2691,66 @@
             }
             // Иначе отправляем текст
             sendMessage();
+        }
+
+        // === Меню удаления сообщения (три точки) ===
+        var activeMsgMenu = null;
+
+        function openMsgMenu(msgId, event) {
+            event.stopPropagation();
+            event.preventDefault();
+            closeMsgMenu();
+
+            var btn = event.currentTarget;
+
+            var menu = document.createElement('div');
+            menu.className = 'message-context-menu';
+            menu.innerHTML = '<button class="delete-btn" onclick="deleteMsg(' + msgId + ')">' +
+                '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>' +
+                'Удалить</button>';
+
+            document.body.appendChild(menu);
+            activeMsgMenu = menu;
+
+            var rect = btn.getBoundingClientRect();
+            menu.style.top = (rect.bottom + 4) + 'px';
+            menu.style.right = (window.innerWidth - rect.right) + 'px';
+            menu.style.left = 'auto';
+
+            setTimeout(function() {
+                document.addEventListener('click', closeMsgMenu);
+            }, 10);
+        }
+
+        function closeMsgMenu() {
+            document.removeEventListener('click', closeMsgMenu);
+            if (activeMsgMenu) {
+                activeMsgMenu.remove();
+                activeMsgMenu = null;
+            }
+        }
+
+        function deleteMsg(msgId) {
+            closeMsgMenu();
+            if (!confirm('Удалить сообщение?')) return;
+
+            apiFetch('/api/messages/' + msgId, { method: 'DELETE' })
+                .then(function(r) {
+                    if (!r.ok) throw new Error('HTTP ' + r.status);
+                    return r.json();
+                })
+                .then(function(result) {
+                    if (result.success) {
+                        loadMessages();
+                        loadLastMessages();
+                    } else {
+                        alert('Ошибка: ' + (result.message || 'Не удалось удалить'));
+                    }
+                })
+                .catch(function(err) {
+                    console.error('Ошибка удаления:', err);
+                    alert('Ошибка: ' + err.message);
+                });
         }
 
         // Переменные для записи голоса
@@ -3304,12 +3521,12 @@
             apiFetch('/api/heartbeat', { method: 'POST' })
                 .then(function(r) {
                     if (r.ok) {
-                        // Обновляем статус "В сети" в шапке
                         var headerStatus = document.querySelector('.header .user-info span');
                         if (headerStatus) {
                             headerStatus.textContent = ' В сети';
                             headerStatus.style.color = 'rgb(29, 180, 24)';
                         }
+                        updateChatHeader();
                     }
                 })
                 .catch(function(err) {
@@ -3815,8 +4032,8 @@
                 return;
             }
             
-            if (username.length < 5) {
-                updatejtUsernameStatus('Username должен быть не менее 5 символов', true);
+            if (username.length < 4) {
+                updatejtUsernameStatus('Username должен быть не менее 4 символов', true);
                 return;
             }
             if (username.length > 32) {
@@ -4027,7 +4244,7 @@
             var errorEl = document.getElementById('registerError');
 
             if (!name || name.length < 2) { errorEl.textContent = 'Имя должно быть не менее 2 символов'; return; }
-            if (!username || username.length < 5) { errorEl.textContent = 'Username должен быть 5-32 символа'; return; }
+            if (!username || username.length < 4) { errorEl.textContent = 'Username должен быть 4-32 символа'; return; }
             if (username.length > 32) { errorEl.textContent = 'Username слишком длинный'; return; }
             if (!/^[a-zA-Z][a-zA-Z0-9_]*$/.test(username)) { errorEl.textContent = 'Username: латиница, цифры, _ (начинается с буквы)'; return; }
             if (!password || password.length < 6) { errorEl.textContent = 'Пароль должен быть не менее 6 символов'; return; }
@@ -4050,8 +4267,26 @@
             formData.append('username', pendingRegistration.username);
             formData.append('password', pendingRegistration.password);
             formData.append('avatar_color', selectedAvatarColor);
-            if (selectedAvatarFile) formData.append('avatar_file', selectedAvatarFile);
-            else if (selectedAvatarData) formData.append('avatar_data', selectedAvatarData);
+
+            if (selectedAvatarFile) {
+                // Если выбран файл — отправляем только его
+                formData.append('avatar_file', selectedAvatarFile);
+            } else if (selectedAvatarData) {
+                // Если data URL — конвертируем в Blob
+                try {
+                    var byteString = atob(selectedAvatarData.split(',')[1]);
+                    var mimeString = selectedAvatarData.split(',')[0].split(':')[1].split(';')[0];
+                    var ab = new ArrayBuffer(byteString.length);
+                    var ia = new Uint8Array(ab);
+                    for (var i = 0; i < byteString.length; i++) {
+                        ia[i] = byteString.charCodeAt(i);
+                    }
+                    var blob = new Blob([ab], { type: mimeString });
+                    formData.append('avatar_file', blob, 'avatar.jpg');
+                } catch(e) {
+                    console.error('Ошибка конвертации аватара:', e);
+                }
+            }
 
             apiFetch('/api/register', { method: 'POST', body: formData })
             .then(function(r) { return r.json(); })
