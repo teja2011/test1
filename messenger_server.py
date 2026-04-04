@@ -945,22 +945,42 @@ def api_clear_messages():
 
 @app.route('/api/settings/delete-account', methods=['POST'])
 def api_delete_account():
-    """Удаляет аккаунт текущего пользователя и все его сообщения"""
+    """Удаляет аккаунт текущего пользователя и все связанные данные"""
     user = get_current_user()
     if not user:
         return jsonify({'success': False, 'message': 'Not authorized'})
     db = get_db()
     try:
-        # Удаляем все сообщения пользователя (как отправленные, так и полученные)
-        db.query(Message).filter(
-            or_(Message.sender_id == user.id, Message.recipient_id == user.id)
+        user_id = user.id
+
+        # 1. Удаляем push-подписки
+        db.query(PushSubscription).filter(PushSubscription.user_id == user_id).delete()
+
+        # 2. Удаляем устройства
+        db.query(Device).filter(Device.user_id == user_id).delete()
+
+        # 3. Удаляем звонки (как инициатор или получатель)
+        db.query(Call).filter(
+            or_(Call.caller_id == user_id, Call.callee_id == user_id)
         ).delete()
-        # Удаляем пользователя
-        db.query(User).filter(User.id == user.id).delete()
+
+        # 4. Удаляем уведомления
+        db.query(Notification).filter(
+            or_(Notification.user_id == user_id, Notification.sender_id == user_id)
+        ).delete()
+
+        # 5. Удаляем все сообщения (как отправленные, так и полученные)
+        db.query(Message).filter(
+            or_(Message.sender_id == user_id, Message.recipient_id == user_id)
+        ).delete()
+
+        # 6. Удаляем пользователя
+        db.query(User).filter(User.id == user_id).delete()
+
         db.commit()
         resp = make_response(jsonify({'success': True}))
         resp.delete_cookie('user_id')
-        resp.delete_cookie('username')  # На всякий 
+        resp.delete_cookie('username')  # На всякий
         return resp
     except Exception as e:
         db.rollback()
@@ -1227,38 +1247,64 @@ def api_mark_read():
 
 @app.route('/api/settings/delete-account', methods=['POST'])
 def api_delete_user_account():
-    """Удалить аккаунт и все связанные данные"""
+    """Удалить аккаунт и все связанные данные из ВСЕХ таблиц"""
     user = get_current_user()
     if not user:
         return jsonify({'success': False, 'message': 'Not authorized'}), 401
 
     user_id = user.id
-    db.close()
+    db.close()  # Закрываем ORM сессию
 
     try:
         from sqlalchemy import text
 
-        # Каждый DELETE в отдельной транзакции чтобы обойти FK в Neon
-        # Порядок важен: сначала дочерние, потом родитель
-        delete_queries = [
-            "DELETE FROM push_subscriptions WHERE user_id = :uid",
-            "DELETE FROM devices WHERE user_id = :uid",
-            "DELETE FROM calls WHERE caller_id = :uid OR callee_id = :uid",
-            "DELETE FROM notifications WHERE user_id = :uid OR sender_id = :uid",
-            "DELETE FROM messages WHERE sender_id = :uid OR recipient_id = :uid",
-            "DELETE FROM users WHERE id = :uid",
-        ]
+        conn = engine.connect()
+        try:
+            # Находим ВСЕ FK которые ссылаются на users.id
+            fk_list = conn.execute(text("""
+                SELECT conname, conrelid::regclass::text AS tbl
+                FROM pg_constraint 
+                WHERE contype = 'f' 
+                AND confrelid = 'users'::regclass
+            """)).fetchall()
 
-        for query in delete_queries:
-            with engine.begin() as conn:
-                conn.execute(text(query), {"uid": user_id})
-            # Каждая транзакция коммитится отдельно — FK не блокирует
+            # Временно удаляем все FK на users
+            for fk_name, tbl in fk_list:
+                try:
+                    conn.execute(text(f"ALTER TABLE {tbl} DROP CONSTRAINT IF EXISTS {fk_name}"))
+                    conn.commit()
+                except Exception as fk_err:
+                    print(f"[Delete] FK drop warning: {fk_err}")
+
+            # Теперь удаляем из ВСЕХ таблиц без FK ограничений
+            conn.execute(text("DELETE FROM push_subscriptions WHERE user_id = :uid"), {"uid": user_id})
+            conn.commit()
+
+            conn.execute(text("DELETE FROM devices WHERE user_id = :uid"), {"uid": user_id})
+            conn.commit()
+
+            conn.execute(text("DELETE FROM calls WHERE caller_id = :uid OR callee_id = :uid"), {"uid": user_id})
+            conn.commit()
+
+            conn.execute(text("DELETE FROM notifications WHERE user_id = :uid OR sender_id = :uid"), {"uid": user_id})
+            conn.commit()
+
+            conn.execute(text("DELETE FROM messages WHERE sender_id = :uid OR recipient_id = :uid"), {"uid": user_id})
+            conn.commit()
+
+            conn.execute(text("DELETE FROM users WHERE id = :uid"), {"uid": user_id})
+            conn.commit()
+
+        finally:
+            conn.close()
 
         resp = make_response(jsonify({'success': True}))
         resp.set_cookie('user_id', '', max_age=0)
         return resp
     except Exception as e:
         print(f"[Delete account] Error: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'success': False, 'message': str(e)}), 500
 
 @app.route('/api/username/check', methods=['POST'])
