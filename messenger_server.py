@@ -1198,30 +1198,22 @@ def api_delete_user_account():
     user_id = user.id
     db = get_db()
     try:
-        # Удаляем все сообщения где пользователь — отправитель или получатель
-        db.query(Message).filter(
-            (Message.sender_id == user_id) | (Message.recipient_id == user_id)
-        ).delete(synchronize_session=False)
-
-        # Удаляем уведомления
-        db.query(Notification).filter(
-            (Notification.user_id == user_id) | (Notification.sender_id == user_id)
-        ).delete(synchronize_session=False)
-
-        # Удаляем push-подписки
+        # Этап 1: Удаляем дочерние записи (до commit)
         db.query(PushSubscription).filter_by(user_id=user_id).delete(synchronize_session=False)
-
-        # Удаляем устройства
         db.query(Device).filter_by(user_id=user_id).delete(synchronize_session=False)
-
-        # Удаляем звонки
         db.query(Call).filter(
             (Call.caller_id == user_id) | (Call.callee_id == user_id)
         ).delete(synchronize_session=False)
+        db.query(Notification).filter(
+            (Notification.user_id == user_id) | (Notification.sender_id == user_id)
+        ).delete(synchronize_session=False)
+        db.query(Message).filter(
+            (Message.sender_id == user_id) | (Message.recipient_id == user_id)
+        ).delete(synchronize_session=False)
+        db.commit()  # Коммитим удаление дочерних
 
-        # Удаляем пользователя
+        # Этап 2: Теперь удаляем пользователя
         db.query(User).filter_by(id=user_id).delete(synchronize_session=False)
-
         db.commit()
 
         resp = make_response(jsonify({'success': True}))
