@@ -19,23 +19,41 @@ from dotenv import load_dotenv
 # === VAPID Keys для Push-уведомлений ===
 # ============================================
 import base64
-import hashlib
 import os
-import uuid as _uuid
 
-# VAPID ключи — генерируем один раз или берём из env
+def _generate_vapid_keys():
+    """Генерируем настоящие VAPID ключи через py_vapid"""
+    try:
+        from py_vapid import Vapid
+        v = Vapid()
+        v.generate_keys()
+        private_key = v.private_key
+        public_key = v.public_key
+
+        # Конвертируем в URL-safe base64
+        priv_bytes = private_key.private_numbers().private_value.to_bytes(32, byteorder='big')
+        pub_numbers = public_key.public_numbers()
+        x = pub_numbers.x.to_bytes(32, byteorder='big')
+        pub_point = b'\x04' + x + pub_numbers.y.to_bytes(32, byteorder='big')
+
+        priv_b64 = base64.urlsafe_b64encode(priv_bytes).decode('utf-8').rstrip('=')
+        pub_b64 = base64.urlsafe_b64encode(pub_point).decode('utf-8').rstrip('=')
+        return priv_b64, pub_b64
+    except Exception as e:
+        print(f"[VAPID] py_vapid error: {e}, using fallback")
+        # Фоллбэк — пустые ключи (push не будет работать, но звонки будут)
+        return '', ''
+
+# VAPID ключи — из env или генерируем
 VAPID_PRIVATE_KEY = os.environ.get('VAPID_PRIVATE_KEY', '')
 VAPID_PUBLIC_KEY = os.environ.get('VAPID_PUBLIC_KEY', '')
 
 if not VAPID_PRIVATE_KEY or not VAPID_PUBLIC_KEY:
-    # Генерируем на лету (для dev; в prod лучше через env)
-    _private_key_bytes = os.urandom(32)
-    VAPID_PRIVATE_KEY = base64.urlsafe_b64encode(_private_key_bytes).decode('utf-8').rstrip('=')
-    # Публичный ключ — производная (упрощённо)
-    VAPID_PUBLIC_KEY = base64.urlsafe_b64encode(
-        hashlib.sha256(_private_key_bytes).digest()
-    ).decode('utf-8').rstrip('=')
-    print(f"[VAPID] Auto-generated public key: {VAPID_PUBLIC_KEY[:20]}...")
+    VAPID_PRIVATE_KEY, VAPID_PUBLIC_KEY = _generate_vapid_keys()
+    if VAPID_PUBLIC_KEY:
+        print(f"[VAPID] Generated keys (set VAPID_PUBLIC_KEY in env for persistence)")
+    else:
+        print(f"[VAPID] ⚠️ Could not generate keys — push notifications will NOT work")
 
 VAPID_CLAIMS = {
     'sub': 'mailto:admin@jetesk.com'
@@ -1151,13 +1169,13 @@ def api_mark_read():
     user = get_current_user()
     if not user:
         return jsonify({'success': False})
-    
+
     data = request.json
     sender_id = data.get('sender_id')
-    
+
     if not sender_id:
         return jsonify({'success': False, 'message': 'No sender_id'})
-    
+
     db = get_db()
     try:
         # Помечаем сообщения как прочитанные (обновляем статус)
@@ -1172,6 +1190,52 @@ def api_mark_read():
         db.rollback()
         print(f"Error marking messages as read: {e}")
         return jsonify({'success': False, 'message': str(e)})
+    finally:
+        db.close()
+
+@app.route('/api/settings/delete-account', methods=['POST'])
+def api_delete_account():
+    """Удалить аккаунт и все связанные данные"""
+    user = get_current_user()
+    if not user:
+        return jsonify({'success': False, 'message': 'Not authorized'}), 401
+
+    user_id = user.id
+    db = get_db()
+    try:
+        # Удаляем все сообщения где пользователь — отправитель или получатель
+        db.query(Message).filter(
+            (Message.sender_id == user_id) | (Message.recipient_id == user_id)
+        ).delete(synchronize_session=False)
+
+        # Удаляем уведомления
+        db.query(Notification).filter(
+            (Notification.user_id == user_id) | (Notification.sender_id == user_id)
+        ).delete(synchronize_session=False)
+
+        # Удаляем push-подписки
+        db.query(PushSubscription).filter_by(user_id=user_id).delete(synchronize_session=False)
+
+        # Удаляем устройства
+        db.query(Device).filter_by(user_id=user_id).delete(synchronize_session=False)
+
+        # Удаляем звонки
+        db.query(Call).filter(
+            (Call.caller_id == user_id) | (Call.callee_id == user_id)
+        ).delete(synchronize_session=False)
+
+        # Удаляем пользователя
+        db.query(User).filter_by(id=user_id).delete(synchronize_session=False)
+
+        db.commit()
+
+        resp = make_response(jsonify({'success': True}))
+        resp.set_cookie('user_id', '', max_age=0)
+        return resp
+    except Exception as e:
+        db.rollback()
+        print(f"[Delete account] Error: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
     finally:
         db.close()
 
@@ -1395,61 +1459,68 @@ def serve_manifest():
 
 def send_push_notification(user_id, title, body, data=None):
     """Отправить push-уведомление пользователю через Web Push API"""
-    import json
-    from pywebpush import webpush, WebPushException
+    # Если ключи не настроены — пропускаем push (звонки всё равно работают)
+    if not VAPID_PRIVATE_KEY or not VAPID_PUBLIC_KEY:
+        return {'sent': 0, 'failed': 0}
 
+    try:
+        from pywebpush import webpush, WebPushException
+    except ImportError:
+        return {'sent': 0, 'failed': 0}
+
+    import json
     db = get_db()
     try:
         subs = db.query(PushSubscription).filter_by(user_id=user_id).all()
-        sent = 0
-        failed = 0
-        for sub in subs:
-            try:
-                subscription_info = {
-                    'endpoint': sub.endpoint,
-                    'keys': {
-                        'p256dh': sub.p256dh,
-                        'auth': sub.auth
-                    }
-                }
-
-                payload = json.dumps({
-                    'title': title,
-                    'body': body,
-                    'icon': '/Jetesk.png',
-                    'badge': '/Jetesk.png',
-                    'vibrate': [500, 200, 500, 200, 500],
-                    'tag': data.get('tag', 'jetesk-call') if data else 'jetesk-notification',
-                    'requireInteraction': True,
-                    'renotify': True,
-                    'data': data or {}
-                })
-
-                webpush(
-                    subscription_info=subscription_info,
-                    data=payload,
-                    vapid_private_key=VAPID_PRIVATE_KEY,
-                    vapid_claims=VAPID_CLAIMS
-                )
-                sent += 1
-                print(f"[Push] Sent to {sub.endpoint[:50]}...")
-            except WebPushException as e:
-                failed += 1
-                print(f"[Push] Failed for {sub.endpoint[:50]}: {e}")
-                # Если подписка невалидна — удаляем
-                if e.response and e.response.status_code in [404, 410]:
-                    db.delete(sub)
-                    db.commit()
-            except Exception as e:
-                failed += 1
-                print(f"[Push] Error: {e}")
-
-        return {'sent': sent, 'failed': failed}
-    except Exception as e:
-        print(f"[Push] General error: {e}")
+        if not subs:
+            return {'sent': 0, 'failed': 0}
+    except Exception:
+        # Таблица ещё не создана — не критично
         return {'sent': 0, 'failed': 0}
-    finally:
-        db.close()
+
+    sent = 0
+    failed = 0
+    for sub in subs:
+        try:
+            subscription_info = {
+                'endpoint': sub.endpoint,
+                'keys': {
+                    'p256dh': sub.p256dh,
+                    'auth': sub.auth
+                }
+            }
+
+            payload = json.dumps({
+                'title': title,
+                'body': body,
+                'icon': '/Jetesk.png',
+                'badge': '/Jetesk.png',
+                'vibrate': [500, 200, 500, 200, 500],
+                'tag': data.get('tag', 'jetesk-call') if data else 'jetesk-notification',
+                'requireInteraction': True,
+                'renotify': True,
+                'data': data or {}
+            })
+
+            webpush(
+                subscription_info=subscription_info,
+                data=payload,
+                vapid_private_key=VAPID_PRIVATE_KEY,
+                vapid_claims=VAPID_CLAIMS
+            )
+            sent += 1
+        except WebPushException:
+            failed += 1
+            # Невалидная подписка — удаляем
+            try:
+                db.delete(sub)
+                db.commit()
+            except:
+                pass
+        except Exception:
+            failed += 1
+
+    return {'sent': sent, 'failed': failed}
 
 @app.route('/api/push/vapid-public-key', methods=['GET'])
 def api_push_vapid_key():
