@@ -405,30 +405,30 @@
             min-height: 0;
         }
         .chat-header {
-            padding: 16px 20px;
+            padding: 18px 20px;
             background: var(--surface);
             border-bottom: 1px solid var(--border);
             display: flex;
             align-items: center;
-            gap: 14px;
+            gap: 16px;
             flex-shrink: 0;
         }
         .chat-title {
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 14px;
             flex: 1;
             min-width: 0;
             cursor: pointer;
         }
         .chat-title-avatar {
-            width: 40px;
-            height: 40px;
+            width: 44px;
+            height: 44px;
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 18px;
+            font-size: 20px;
             font-weight: 600;
             color: white;
             flex-shrink: 0;
@@ -440,13 +440,13 @@
         }
         .chat-title-name {
             font-weight: 600;
-            font-size: 15px;
+            font-size: 16px;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
         }
         .chat-title-status {
-            font-size: 12px;
+            font-size: 13px;
             color: var(--text-secondary);
         }
         .chat-title-status.online {
@@ -464,27 +464,6 @@
             font-size: 20px;
             align-items: center;
             justify-content: center;
-        }
-        .call-btn {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            background: var(--bg);
-            color: var(--text-secondary);
-            border: none;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex-shrink: 0;
-            transition: color 0.2s, transform 0.15s;
-        }
-        .call-btn:hover {
-            color: #22c55e;
-            transform: scale(1.1);
-        }
-        .call-btn.hidden {
-            display: none;
         }
         .call-modal-overlay {
             display: none;
@@ -1011,6 +990,103 @@
             justify-content: center;
         }
         .modal-overlay.show { display: flex; }
+        .chat-profile-modal {
+            background: var(--surface);
+            border-radius: 20px;
+            padding: 28px 24px;
+            width: 90%;
+            max-width: 360px;
+            position: relative;
+        }
+        .chat-profile-close {
+            position: absolute;
+            top: 16px;
+            left: 16px;
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            padding: 4px;
+        }
+        .chat-profile-close:hover { color: var(--text); }
+        .chat-profile-avatar {
+            width: 96px;
+            height: 96px;
+            border-radius: 50%;
+            margin: 0 auto 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 36px;
+            font-weight: 600;
+            color: white;
+            background: #6366f1;
+        }
+        .chat-profile-name {
+            text-align: center;
+            font-size: 20px;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+        .chat-profile-status {
+            text-align: center;
+            font-size: 14px;
+            color: var(--text-secondary);
+            margin-bottom: 24px;
+        }
+        .chat-profile-actions {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+        .chat-profile-action {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+            background: var(--bg);
+            border: none;
+            border-radius: 12px;
+            padding: 14px 8px;
+            color: var(--text);
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .chat-profile-action:hover {
+            background: var(--surface-light);
+        }
+        .chat-profile-action span {
+            font-size: 12px;
+        }
+        .chat-profile-info {
+            background: var(--bg);
+            border-radius: 12px;
+            padding: 16px;
+        }
+        .chat-profile-info-row {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .chat-profile-info-label {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+        .chat-profile-info-value {
+            font-size: 15px;
+            word-break: break-word;
+        }
+        .chat-profile-info-value span {
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+        .chat-profile-divider {
+            height: 1px;
+            background: var(--border);
+            margin: 12px 0;
+            border: none;
+        }
         .modal {
             background: var(--surface);
             border-radius: 16px;
@@ -1458,18 +1534,13 @@
                 <main class="chat-panel" id="chatPanel">
                     <div class="chat-header">
                         <button class="back-btn" id="backToChatsBtn" onclick="showUsersList()">←</button>
-                        <div class="chat-title" id="chatTitle" onclick="openProfileModal()">
+                        <div class="chat-title" id="chatTitle" onclick="openChatProfile()">
                             <div class="chat-title-avatar" id="chatTitleAvatar" style="background: #6366f1;">A</div>
                             <div class="chat-title-info">
                                 <div class="chat-title-name" id="chatTitleName">Общий чат</div>
                                 <div class="chat-title-status" id="chatTitleStatus"></div>
                             </div>
                         </div>
-                        <button class="call-btn" id="callBtn" onclick="startCall()" title="Позвонить">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                                <path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/>
-                            </svg>
-                        </button>
                     </div>
 
                     <div class="messages" id="messagesContainer">
@@ -1550,65 +1621,52 @@
         </div>
     </div>
 
-    <!-- Profile Modal -->
-    <div id="profileModal" class="modal-overlay">
-        <div class="profile-modal">
-            <div class="profile-header">
-                <button class="profile-back-btn" onclick="closeProfileModal()">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M15 18l-6-6 6-6"/>
-                    </svg>
-                    Назад
-                </button>
-                <button class="profile-edit-btn" id="profileEditBtn" onclick="toggleProfileEdit()">Изм.</button>
+    <!-- Chat Profile Modal -->
+    <div id="chatProfileModal" class="modal-overlay" onclick="closeChatProfile(event)">
+        <div class="chat-profile-modal" onclick="event.stopPropagation()">
+            <button class="chat-profile-close" onclick="closeChatProfile()">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M15 18l-6-6 6-6"/>
+                </svg>
+            </button>
+            <div class="chat-profile-avatar" id="chatProfileAvatar">
+                <span id="chatProfileAvatarLetter">A</span>
+                <img id="chatProfileAvatarImg" style="display:none; width:100%; height:100%; border-radius:50%; object-fit:cover;" />
             </div>
-            <div class="profile-content">
-                <div class="profile-avatar-section">
-                    <div class="profile-avatar" id="profileAvatar">
-                        <span id="profileAvatarLetter">A</span>
-                        <img id="profileAvatarImg" style="display:none; width:100%; height:100%; border-radius:50%; object-fit:cover;" />
+            <div class="chat-profile-name" id="chatProfileName">Username</div>
+            <div class="chat-profile-status" id="chatProfileStatus">был(а) недавно</div>
+
+            <div class="chat-profile-actions">
+                <button class="chat-profile-action" onclick="closeChatProfile()">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>
+                    <span>чат</span>
+                </button>
+                <button class="chat-profile-action" onclick="closeChatProfile(); setTimeout(function(){ startCall(); }, 300)">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>
+                    <span>звонок</span>
+                </button>
+                <button class="chat-profile-action" id="chatProfileMuteBtn" onclick="toggleChatProfileMute()">
+                    <svg id="chatProfileMuteIcon" width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.89 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>
+                    <span id="chatProfileMuteLabel">звук</span>
+                </button>
+                <button class="chat-profile-action">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+                    <span>ещё</span>
+                </button>
+            </div>
+
+            <div class="chat-profile-info">
+                <div class="chat-profile-info-row">
+                    <div class="chat-profile-info-label">имя пользователя</div>
+                    <div class="chat-profile-info-value" id="chatProfileUsername">
+                        <span>@username</span>
                     </div>
-                    <div class="profile-name" id="profileName">Username</div>
-                    <div class="profile-status" id="profileStatus">был(а) недавно</div>
                 </div>
-                
-                <div class="profile-actions">
-                    <div class="profile-action-btn" onclick="closeProfileModal()">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>
-                        <span>чат</span>
-                    </div>
-                    <div class="profile-action-btn" id="profileCallBtn" onclick="closeProfileModal(); setTimeout(function(){ startCall(); }, 300)">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>
-                        <span>звонок</span>
-                    </div>
-                    <div class="profile-action-btn" id="profileSoundBtn" onclick="toggleMuteUser()">
-                        <svg id="profileSoundIcon" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.89 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>
-                        <span id="profileSoundLabel">звук</span>
-                    </div>
-                    <div class="profile-action-btn">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
-                        <span>ещё</span>
-                    </div>
-                </div>
-                
-                <div class="profile-info-card">
-                    <div class="profile-info-item">
-                        <div class="profile-info-label">имя пользователя</div>
-                        <div class="profile-info-value" id="profileJtUsername">
-                            <span>@username</span>
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style="opacity:0.5;">
-                                <path d="M4 8h4V4H4v4zm6 12h4v-4h-4v4zm-6 0h4v-4H4v4zm0-6h4v-4H4v4zm6 0h4v-4h-4v4zm6-10v4h4V4h-4zm-6 4h4V4h-4v4zm6 6h4v-4h-4v4zm0 6h4v-4h-4v4z"/>
-                            </svg>
-                        </div>
-                    </div>
-                    <div class="profile-divider"></div>
-                    <div class="profile-info-item" id="profileBioSection">
-                        <div class="profile-info-label">о себе</div>
-                        <div class="profile-info-value" id="profileBio">
-                            <span>Не указано</span>
-                        </div>
-                        <textarea class="profile-bio-edit" id="profileBioEdit" style="display:none;" maxlength="150" placeholder="Расскажите о себе..."></textarea>
-                        <div class="profile-bio-counter" id="profileBioCounter" style="display:none;">0/150</div>
+                <div class="chat-profile-divider"></div>
+                <div class="chat-profile-info-row">
+                    <div class="chat-profile-info-label">о себе</div>
+                    <div class="chat-profile-info-value" id="chatProfileBio">
+                        <span>Не указано</span>
                     </div>
                 </div>
             </div>
@@ -2520,6 +2578,105 @@
             }
         }
 
+        // Chat Profile Modal
+        var chatProfileMuted = {};
+
+        function openChatProfile() {
+            if (selectedUserId <= 0) return;
+            var targetUser = null;
+            for (var i = 0; i < users.length; i++) {
+                if (users[i].id === selectedUserId) {
+                    targetUser = users[i];
+                    break;
+                }
+            }
+            if (!targetUser) return;
+
+            // Аватарка
+            var avatarEl = document.getElementById('chatProfileAvatar');
+            var avatarImg = document.getElementById('chatProfileAvatarImg');
+            var avatarLetter = document.getElementById('chatProfileAvatarLetter');
+            if (targetUser.avatar_url) {
+                if (avatarImg) { avatarImg.src = targetUser.avatar_url; avatarImg.style.display = 'block'; }
+                if (avatarLetter) avatarLetter.style.display = 'none';
+                avatarEl.style.background = 'transparent';
+            } else {
+                if (avatarImg) avatarImg.style.display = 'none';
+                if (avatarLetter) {
+                    avatarLetter.style.display = 'block';
+                    avatarLetter.textContent = (targetUser.username || '').charAt(0).toUpperCase();
+                }
+                avatarEl.style.background = '#' + (targetUser.avatar_color || '6366f1');
+            }
+
+            // Имя и статус
+            document.getElementById('chatProfileName').textContent = targetUser.username || '';
+            var statusEl = document.getElementById('chatProfileStatus');
+            if (targetUser.online || targetUser.is_online) {
+                statusEl.textContent = 'В сети';
+                statusEl.style.color = '#22c55e';
+            } else if (targetUser.last_seen) {
+                statusEl.textContent = 'Был(а) ' + targetUser.last_seen;
+                statusEl.style.color = 'var(--text-secondary)';
+            } else {
+                statusEl.textContent = 'Не в сети';
+                statusEl.style.color = 'var(--text-secondary)';
+            }
+
+            // Username
+            document.getElementById('chatProfileUsername').innerHTML = '<span>' + (targetUser.jt_username ? '@' + targetUser.jt_username : 'Не указано') + '</span>';
+
+            // Bio — запросим с сервера
+            var bioEl = document.getElementById('chatProfileBio');
+            bioEl.innerHTML = '<span>Загрузка...</span>';
+            fetch('/api/users')
+                .then(function(r) { return r.json(); })
+                .then(function(ul) {
+                    for (var j = 0; j < ul.length; j++) {
+                        if (ul[j].id === selectedUserId && ul[j].bio) {
+                            bioEl.innerHTML = '<span>' + escapeHtml(ul[j].bio) + '</span>';
+                            return;
+                        }
+                    }
+                    bioEl.innerHTML = '<span>Не указано</span>';
+                })
+                .catch(function() { bioEl.innerHTML = '<span>Не указано</span>'; });
+
+            // Mute state
+            updateChatProfileMute();
+
+            document.getElementById('chatProfileModal').style.display = 'flex';
+        }
+
+        function closeChatProfile(e) {
+            if (e && e.target !== document.getElementById('chatProfileModal')) return;
+            document.getElementById('chatProfileModal').style.display = 'none';
+        }
+
+        function toggleChatProfileMute() {
+            if (!selectedUserId || selectedUserId <= 0) return;
+            if (chatProfileMuted[selectedUserId]) {
+                delete chatProfileMuted[selectedUserId];
+            } else {
+                chatProfileMuted[selectedUserId] = true;
+            }
+            localStorage.setItem('jetesk_muted', JSON.stringify(chatProfileMuted));
+            updateChatProfileMute();
+        }
+
+        function updateChatProfileMute() {
+            var isMuted = selectedUserId > 0 && chatProfileMuted[selectedUserId];
+            var icon = document.getElementById('chatProfileMuteIcon');
+            var label = document.getElementById('chatProfileMuteLabel');
+            if (icon) icon.style.opacity = isMuted ? '0.4' : '1';
+            if (label) label.textContent = isMuted ? 'без звука' : 'звук';
+        }
+
+        try {
+            var savedMuted2 = localStorage.getItem('jetesk_muted');
+            if (savedMuted2) chatProfileMuted = JSON.parse(savedMuted2);
+        } catch(e) {}
+
         function loadMessages() {
             var url = selectedUserId === 0 ? '/api/messages' : '/api/messages/' + selectedUserId;
             var userId = selectedUserId;
@@ -2854,41 +3011,6 @@
                         btn.style.display = 'none';
                     }
                 });
-
-                // Pull-to-refresh
-                var pullStartY = 0;
-                var pullDistance = 0;
-                var isPulling = false;
-
-                messagesContainer.addEventListener('touchstart', function(e) {
-                    if (messagesContainer.scrollTop === 0) {
-                        pullStartY = e.touches[0].clientY;
-                        isPulling = true;
-                    }
-                }, { passive: true });
-
-                messagesContainer.addEventListener('touchmove', function(e) {
-                    if (!isPulling) return;
-                    pullDistance = e.touches[0].clientY - pullStartY;
-                    if (pullDistance > 0 && pullDistance < 120) {
-                        // Показываем индикатор обновления
-                        if (pullDistance > 60) {
-                            messagesContainer.style.transform = 'translateY(' + (pullDistance * 0.3) + 'px)';
-                        }
-                    }
-                }, { passive: true });
-
-                messagesContainer.addEventListener('touchend', function() {
-                    if (!isPulling) return;
-                    isPulling = false;
-                    if (pullDistance > 60) {
-                        // Обновляем данные
-                        loadMessages();
-                        if (selectedUserId !== 0) loadUsers();
-                    }
-                    pullDistance = 0;
-                    messagesContainer.style.transform = '';
-                }, { passive: true });
             }
         });
 
@@ -4969,98 +5091,6 @@
                 btn.classList.remove('visible');
             }
         }
-
-        // ===== Profile Modal =====
-        var mutedUsers = {};
-
-        function openProfileModal() {
-            if (selectedUserId <= 0) return;
-            var targetUser = null;
-            for (var i = 0; i < users.length; i++) {
-                if (users[i].id === selectedUserId) {
-                    targetUser = users[i];
-                    break;
-                }
-            }
-            if (!targetUser) return;
-
-            var modal = document.getElementById('profileModal');
-            if (modal) modal.style.display = 'flex';
-
-            // Заполняем данные
-            var nameEl = document.getElementById('profileName');
-            if (nameEl) nameEl.textContent = targetUser.username || '';
-
-            var statusEl = document.getElementById('profileStatus');
-            if (statusEl) {
-                if (targetUser.online || targetUser.is_online) {
-                    statusEl.textContent = 'В сети';
-                    statusEl.style.color = '#22c55e';
-                } else if (targetUser.last_seen) {
-                    statusEl.textContent = 'Был(а) ' + targetUser.last_seen;
-                    statusEl.style.color = 'var(--text-secondary)';
-                } else {
-                    statusEl.textContent = 'Не в сети';
-                    statusEl.style.color = 'var(--text-secondary)';
-                }
-            }
-
-            // Аватарка
-            var avatarEl = document.getElementById('profileAvatar');
-            var avatarImg = document.getElementById('profileAvatarImg');
-            var avatarLetter = document.getElementById('profileAvatarLetter');
-            if (avatarEl) {
-                if (targetUser.avatar_url) {
-                    if (avatarImg) { avatarImg.src = targetUser.avatar_url; avatarImg.style.display = 'block'; }
-                    if (avatarLetter) avatarLetter.style.display = 'none';
-                } else {
-                    if (avatarImg) avatarImg.style.display = 'none';
-                    if (avatarLetter) {
-                        avatarLetter.style.display = 'block';
-                        avatarLetter.textContent = (targetUser.username || '').charAt(0).toUpperCase();
-                    }
-                    avatarEl.style.background = '#' + (targetUser.avatar_color || '6366f1');
-                }
-            }
-
-            // Mute state
-            updateMuteButtonState();
-        }
-
-        function closeProfileModal() {
-            var modal = document.getElementById('profileModal');
-            if (modal) modal.style.display = 'none';
-        }
-
-        function toggleMuteUser() {
-            if (!selectedUserId || selectedUserId <= 0) return;
-            if (mutedUsers[selectedUserId]) {
-                delete mutedUsers[selectedUserId];
-            } else {
-                mutedUsers[selectedUserId] = true;
-            }
-            updateMuteButtonState();
-            // Сохраняем в localStorage
-            localStorage.setItem('jetesk_muted', JSON.stringify(mutedUsers));
-        }
-
-        function updateMuteButtonState() {
-            var icon = document.getElementById('profileSoundIcon');
-            var label = document.getElementById('profileSoundLabel');
-            var isMuted = selectedUserId > 0 && mutedUsers[selectedUserId];
-            if (icon) {
-                icon.style.opacity = isMuted ? '0.4' : '1';
-            }
-            if (label) {
-                label.textContent = isMuted ? 'без звука' : 'звук';
-            }
-        }
-
-        // Загрузка muted users при старте
-        try {
-            var savedMuted = localStorage.getItem('jetesk_muted');
-            if (savedMuted) mutedUsers = JSON.parse(savedMuted);
-        } catch(e) {}
 
         function startCall() {
             if (selectedUserId <= 0 || isInCall) return;
