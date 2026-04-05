@@ -517,7 +517,14 @@ def api_register():
 
 @app.route('/api/login', methods=['POST'])
 def api_login():
-    data = request.json
+    data = request.get_json(force=True, silent=True)
+    if not data:
+        try:
+            import json
+            data = json.loads(request.data.decode('utf-8'))
+        except:
+            data = {}
+            
     username = data.get('username', '').strip()
     password = data.get('password', '')
     device_id = data.get('device_id', '')
@@ -724,8 +731,16 @@ def api_send():
     user = get_current_user()
     if not user:
         return jsonify({'success': False, 'message': 'Not authorized'})
-    data = request.get_json(silent=True)
+    
+    data = request.get_json(force=True, silent=True)
     if not data:
+        try:
+            import json
+            data = json.loads(request.data.decode('utf-8'))
+        except:
+            pass
+            
+    if not data or 'content' not in data:
         return jsonify({'success': False, 'message': 'Invalid request format'}), 400
     content = data.get('content', '').strip()
     recipient_id = data.get('recipient_id')
@@ -1076,13 +1091,23 @@ def api_change_bio():
         user = get_current_user()
         if not user:
             return jsonify({'success': False, 'message': 'Not authorized'}), 401
-        data = request.get_json(silent=True)
+        
+        data = request.get_json(force=True, silent=True)
+        if not data:
+            try:
+                import json
+                data = json.loads(request.data.decode('utf-8'))
+            except:
+                data = {}
+                
         if not data or 'bio' not in data:
-            return jsonify({'success': False, 'message': 'Invalid data'}), 400
+            return jsonify({'success': False, 'message': 'Invalid data: bio field required'}), 400
+        
         bio = str(data.get('bio', '')).strip()[:150]
         
         db = get_db()
         try:
+            # Пробуем через SQLAlchemy
             db.execute(text("UPDATE users SET bio = :bio WHERE id = :uid"), {'bio': bio, 'uid': user.id})
             db.commit()
         except Exception as col_err:
