@@ -16,7 +16,6 @@ import smtplib
 from dotenv import load_dotenv
 import base64
 import os
-from pywebpush import webpush, WebPushException
 
 def _generate_vapid_keys():
     """Генерируем настоящие VAPID ключи через py_vapid"""
@@ -178,7 +177,6 @@ class User(Base):
     avatar_color = Column(String(20), default='6366f1')
     avatar_url = Column(String(500), nullable=True)
     jt_username = Column(String(50), unique=True, nullable=True)
-    bio = Column(String(150), nullable=True)  # Поле "о себе"
     last_seen = Column(DateTime, nullable=True)
 
 class Message(Base):
@@ -200,14 +198,6 @@ class Notification(Base):
     message = Column(String(500), nullable=False)
     type = Column(String(20), default='message')
     is_read = Column(Integer, default=0)
-    created_at = Column(DateTime, default=utc_now)
-
-class UserMute(Base):
-    """Отключение уведомлений от конкретного пользователя"""
-    __tablename__ = 'user_mutes'
-    id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
-    muted_user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
     created_at = Column(DateTime, default=utc_now)
 
 class Call(Base):
@@ -325,18 +315,8 @@ def ensure_tables():
         return False
 
 def create_notification(db, user_id, message, sender_id=None, notif_type='message'):
-    """Создаёт уведомление для пользователя (если не замьючен)"""
+    """Создаёт уведомление для пользователя"""
     try:
-        # Проверяем, не замьючен ли sender
-        if sender_id:
-            muted = db.query(UserMute).filter_by(
-                user_id=user_id,
-                muted_user_id=sender_id
-            ).first()
-            if muted:
-                print(f"[Notification] User {user_id} muted user {sender_id}, skipping notification")
-                return None
-        
         notification = Notification(
             user_id=user_id,
             sender_id=sender_id,
@@ -352,29 +332,23 @@ def create_notification(db, user_id, message, sender_id=None, notif_type='messag
         return None
 
 def get_current_user():
+    user_id = request.cookies.get('user_id')
+    if not user_id:
+        return None
+    db = get_db()
     try:
-        user_id = request.cookies.get('user_id')
-        if not user_id:
-            return None
-        db = get_db()
-        try:
-            user = db.query(User).filter_by(id=int(user_id)).first()
-            db.close()
-            return user
-        except Exception as e:
-            db.close()
-            return None
-    except Exception:
+        user = db.query(User).filter_by(id=int(user_id)).first()
+        db.close()
+        return user
+    except Exception as e:
+        db.close()
+        print(f"Error getting current user: {e}")
         return None
 
 @app.before_request
 def before_request():
     """Гарантировать что таблицы существуют перед каждым запросом (для serverless)"""
-    try:
-        ensure_tables()
-    except Exception as e:
-        # Тихо игнорируем ошибки - таблицы уже могут существовать
-        pass
+    ensure_tables()
 
 def generate_avatar_color():
     import random
@@ -404,14 +378,7 @@ def api_me():
     user = get_current_user()
     if user:
         print(f"[API /me] User: id={user.id}, username={user.username}, avatar_url={user.avatar_url}, jt_username={user.jt_username}")
-        return jsonify({
-            'id': user.id,
-            'username': user.username,
-            'avatar_color': user.avatar_color or '6366f1',
-            'avatar_url': user.avatar_url,
-            'jt_username': user.jt_username,
-            'bio': user.bio or ''
-        })
+        return jsonify({'id': user.id, 'username': user.username, 'avatar_color': user.avatar_color or '6366f1', 'avatar_url': user.avatar_url, 'jt_username': user.jt_username})
     print(f"[API /me] No user (cookie: {request.cookies.get('user_id')})")
     return jsonify(None)
 
@@ -718,33 +685,14 @@ def api_messages(recipient_id=None):
 
 @app.route('/api/send', methods=['POST'])
 def api_send():
-    print(f"[api_send] Request received")
-    print(f"[api_send] Content-Type: {request.content_type}")
-    raw_data = request.get_data(as_text=True)
-    print(f"[api_send] Raw data: {raw_data[:200]}")
-    
     user = get_current_user()
     if not user:
-        print(f"[api_send] User not authorized")
-        return jsonify({'success': False, 'message': 'Not authorized'}), 401
-    
-    # Парсим JSON вручную для надёжности
-    try:
-        if raw_data:
-            data = json.loads(raw_data)
-        else:
-            data = {}
-    except json.JSONDecodeError as e:
-        print(f"[api_send] JSON parse error: {e}")
-        return jsonify({'success': False, 'message': f'Invalid JSON: {str(e)}'}), 400
-    
+        return jsonify({'success': False, 'message': 'Not authorized'})
+    data = request.json
     content = data.get('content', '').strip()
     recipient_id = data.get('recipient_id')
-    
-    print(f"[api_send] Parsed: content='{content[:50]}...', recipient_id={recipient_id}")
-    
     if not content:
-        return jsonify({'success': False, 'message': 'Empty message'}), 400
+        return jsonify({'success': False, 'message': 'Empty message'})
     db = get_db()
     try:
         # Пробуем со статусом
@@ -760,11 +708,10 @@ def api_send():
         
         msg_id = msg.id
 
-        # Отправляем уведомление и push получателю
+        # Отправляем уведомление получателю
         if recipient_id:
             recipient = db.query(User).filter_by(id=recipient_id).first()
             if recipient:
-                # Создаём уведомление в БД (проверит mute)
                 create_notification(
                     db=db,
                     user_id=recipient_id,
@@ -772,24 +719,6 @@ def api_send():
                     sender_id=user.id,
                     notif_type='message'
                 )
-                
-                # Отправляем push-уведомление (если не замьючен)
-                muted = db.query(UserMute).filter_by(
-                    user_id=recipient_id,
-                    muted_user_id=user.id
-                ).first()
-                if not muted:
-                    send_push_notification(
-                        user_id=recipient_id,
-                        title=user.username,
-                        body=content[:100] if len(content) > 100 else content,
-                        data={
-                            'type': 'message',
-                            'sender_id': user.id,
-                            'sender_name': user.username,
-                            'message_id': msg_id
-                        }
-                    )
 
         return jsonify({'success': True, 'id': msg_id, 'status': 'sent'})
     except Exception as e:
@@ -905,7 +834,7 @@ def api_send_file():
             db.commit()
             print(f"[send-file] Message saved (no status) with id: {msg.id}")
 
-        # Отправляем уведомление и push получателю
+        # Отправляем уведомление получателю
         if recipient_id:
             try:
                 recipient = db.query(User).filter_by(id=int(recipient_id)).first()
@@ -919,25 +848,6 @@ def api_send_file():
                         notif_type='message'
                     )
                     print(f"[send-file] Notification sent to user {recipient_id}")
-                    
-                    # Отправляем push-уведомление (если не замьючен)
-                    muted = db.query(UserMute).filter_by(
-                        user_id=int(recipient_id),
-                        muted_user_id=user.id
-                    ).first()
-                    if not muted:
-                        send_push_notification(
-                            user_id=int(recipient_id),
-                            title=user.username,
-                            body=notif_message,
-                            data={
-                                'type': 'message',
-                                'sender_id': user.id,
-                                'sender_name': user.username,
-                                'message_id': msg.id,
-                                'file_type': file_type
-                            }
-                        )
             except Exception as notif_err:
                 print(f"[send-file] Error sending notification: {notif_err}")
 
@@ -1203,240 +1113,6 @@ def api_change_username():
         db.close()
         return jsonify({'success': False, 'message': str(e)})
 
-@app.route('/api/settings/change-bio', methods=['POST'])
-def api_change_bio():
-    """Изменить поле 'о себе'"""
-    try:
-        user = get_current_user()
-        if not user:
-            return jsonify({'success': False, 'message': 'Not authorized'})
-
-        data = request.get_json(silent=True)
-        if not data:
-            return jsonify({'success': False, 'message': 'Invalid request data'})
-        
-        bio = data.get('bio', '').strip()
-
-        if len(bio) > 150:
-            return jsonify({'success': False, 'message': 'Описание слишком длинное (максимум 150 символов)'})
-
-        db = get_db()
-        try:
-            user.bio = bio if bio else None
-            db.commit()
-            return jsonify({'success': True, 'bio': user.bio or ''})
-        except Exception as e:
-            db.rollback()
-            print(f"❌ change-bio: ошибка базы данных: {e}")
-            return jsonify({'success': False, 'message': str(e)})
-        finally:
-            db.close()
-    except Exception as e:
-        print(f"Unexpected error in api_change_bio: {e}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({'success': False, 'message': str(e)})
-
-@app.route('/api/mute', methods=['POST'])
-def api_toggle_mute():
-    """Включить/выключить уведомления от пользователя"""
-    try:
-        user = get_current_user()
-        if not user:
-            return jsonify({'success': False, 'message': 'Not authorized'})
-
-        data = request.get_json(silent=True)
-        if not data:
-            return jsonify({'success': False, 'message': 'Invalid request data'})
-        
-        muted_user_id = data.get('muted_user_id')
-        if not muted_user_id:
-            return jsonify({'success': False, 'message': 'No muted_user_id'})
-
-        db = get_db()
-        try:
-            # Проверяем, замьючен ли уже
-            existing = db.query(UserMute).filter_by(
-                user_id=user.id,
-                muted_user_id=int(muted_user_id)
-            ).first()
-
-            if existing:
-                # Размьючиваем
-                db.delete(existing)
-                db.commit()
-                print(f"[Mute] User {user.id} unmuted user {muted_user_id}")
-                return jsonify({'success': True, 'muted': False})
-            else:
-                # Мьютим
-                mute = UserMute(user_id=user.id, muted_user_id=int(muted_user_id))
-                db.add(mute)
-                db.commit()
-                print(f"[Mute] User {user.id} muted user {muted_user_id}")
-                return jsonify({'success': True, 'muted': True})
-        except Exception as e:
-            db.rollback()
-            print(f"❌ mute: ошибка базы данных: {e}")
-            return jsonify({'success': False, 'message': str(e)})
-        finally:
-            db.close()
-    except Exception as e:
-        print(f"Unexpected error in api_toggle_mute: {e}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({'success': False, 'message': str(e)})
-
-@app.route('/api/mute/status/<int:muted_user_id>')
-def api_mute_status(muted_user_id):
-    """Проверить статус mute для пользователя"""
-    try:
-        user = get_current_user()
-        if not user:
-            return jsonify({'muted': False})
-
-        db = get_db()
-        try:
-            existing = db.query(UserMute).filter_by(
-                user_id=user.id,
-                muted_user_id=muted_user_id
-            ).first()
-            return jsonify({'muted': existing is not None})
-        except Exception as e:
-            print(f"Error checking mute status: {e}")
-            return jsonify({'muted': False})
-        finally:
-            db.close()
-    except Exception as e:
-        print(f"Unexpected error in api_mute_status: {e}")
-        return jsonify({'muted': False})
-
-@app.route('/api/push/subscribe', methods=['POST'])
-def api_push_subscribe():
-    """Сохранить push-подписку устройства"""
-    try:
-        user = get_current_user()
-        if not user:
-            return jsonify({'success': False, 'message': 'Not authorized'})
-
-        data = request.get_json(silent=True)
-        if not data:
-            return jsonify({'success': False, 'message': 'Invalid request data'})
-
-        subscription = data.get('subscription')
-        if not subscription:
-            return jsonify({'success': False, 'message': 'No subscription'})
-
-        device_id = data.get('device_id', str(uuid.uuid4()))
-        device_name = data.get('device_name', 'Unknown Device')
-
-        db = get_db()
-        try:
-            # Проверяем существующую подписку
-            existing = db.query(PushSubscription).filter_by(
-                user_id=user.id,
-                endpoint=subscription['endpoint']
-            ).first()
-
-            if existing:
-                # Обновляем существующую
-                existing.p256dh = subscription['keys']['p256dh']
-                existing.auth = subscription['keys']['auth']
-                existing.device_id = device_id
-                existing.last_used = utc_now()
-            else:
-                # Создаём новую
-                push_sub = PushSubscription(
-                    user_id=user.id,
-                    device_id=device_id,
-                    endpoint=subscription['endpoint'],
-                    p256dh=subscription['keys']['p256dh'],
-                    auth=subscription['keys']['auth']
-                )
-                db.add(push_sub)
-
-            db.commit()
-            print(f"[Push] Subscription saved for user {user.id}, device: {device_name}")
-            return jsonify({'success': True, 'device_id': device_id})
-        except Exception as e:
-            db.rollback()
-            print(f"Error saving push subscription: {e}")
-            return jsonify({'success': False, 'message': str(e)})
-        finally:
-            db.close()
-    except Exception as e:
-        print(f"Unexpected error in api_push_subscribe: {e}")
-        return jsonify({'success': False, 'message': str(e)})
-
-def send_push_notification(user_id, title, body, data=None):
-    """Отправить push-уведомление пользователю"""
-    try:
-        # Проверяем VAPID ключи
-        vapid_private_key = os.environ.get('VAPID_PRIVATE_KEY')
-        vapid_public_key = os.environ.get('VAPID_PUBLIC_KEY')
-
-        if not vapid_private_key or not vapid_public_key:
-            print(f"[Push] VAPID keys not configured, skipping push for user {user_id}")
-            return False
-
-        db = get_db()
-        try:
-            subscriptions = db.query(PushSubscription).filter_by(user_id=user_id).all()
-
-            if not subscriptions:
-                print(f"[Push] No subscriptions for user {user_id}")
-                return False
-
-            notification_data = {
-                'title': title,
-                'body': body,
-                'icon': '/Jetesk.png',
-                'badge': '/Jetesk.png',
-                'data': data or {},
-                'vibrate': [200, 100, 200]
-            }
-
-            sent_count = 0
-            for sub in subscriptions:
-                try:
-                    subscription_info = {
-                        'endpoint': sub.endpoint,
-                        'keys': {
-                            'p256dh': sub.p256dh,
-                            'auth': sub.auth
-                        }
-                    }
-
-                    webpush(
-                        subscription_info=subscription_info,
-                        data=json.dumps(notification_data),
-                        vapid_private_key=vapid_private_key,
-                        vapid_claims={
-                            'sub': 'mailto:admin@jetesk.app'
-                        }
-                    )
-                    sent_count += 1
-                    print(f"[Push] Sent to device {sub.device_id}")
-                except WebPushException as e:
-                    print(f"[Push] Failed to send to device {sub.device_id}: {e}")
-                    # Удаляем недействительную подписку
-                    if e.response and e.response.status_code in [404, 410]:
-                        db.delete(sub)
-
-            if sent_count > 0:
-                db.commit()
-                print(f"[Push] Sent {sent_count} notifications to user {user_id}")
-                return True
-            return False
-        except Exception as e:
-            db.rollback()
-            print(f"Error sending push: {e}")
-            return False
-        finally:
-            db.close()
-    except Exception as e:
-        print(f"Unexpected error in send_push_notification: {e}")
-        return False
-
 @app.route('/api/last-messages')
 def api_last_messages():
     """Получение последних сообщений для каждого пользователя"""
@@ -1680,10 +1356,10 @@ def api_username_set():
             db.commit()
             return jsonify({'success': True, 'jt_username': None})
 
-        # Проверка валидности: 4-32 символа, латиница, цифры, точки, подчёркивания
+        # Проверка валидности: 5-32 символа, латиница, цифры, точки, подчёркивания
         import re
-        if not re.match(r'^[a-zA-Z][a-zA-Z0-9_.]{3,31}$', jt_username):
-            return jsonify({'success': False, 'message': 'Неверный формат. 4-32 символа, начинается с буквы (a-z), латиница, цифры, точки и подчёркивания'})
+        if not re.match(r'^[a-zA-Z][a-zA-Z0-9_.]{4,31}$', jt_username):
+            return jsonify({'success': False, 'message': 'Неверный формат. 5-32 символа, начинается с буквы (a-z), латиница, цифры, точки и подчёркивания'})
 
         # Проверяем что нет подряд идущих точек или подчёркиваний
         if '..' in jt_username or '__' in jt_username:
@@ -1923,6 +1599,50 @@ def send_push_notification(user_id, title, body, data=None):
 def api_push_vapid_key():
     """Получить VAPID public key для клиента"""
     return jsonify({'public_key': VAPID_PUBLIC_KEY})
+
+@app.route('/api/push/subscribe', methods=['POST'])
+def api_push_subscribe():
+    """Сохранить push-подписку"""
+    user = get_current_user()
+    if not user:
+        return jsonify({'success': False, 'message': 'Not authorized'}), 401
+
+    data = request.json
+    endpoint = data.get('endpoint', '')
+    p256dh = data.get('keys', {}).get('p256dh', '')
+    auth = data.get('keys', {}).get('auth', '')
+    device_id = data.get('device_id', '')
+
+    if not endpoint or not p256dh or not auth:
+        return jsonify({'success': False, 'message': 'Missing subscription data'}), 400
+
+    db = get_db()
+    try:
+        # Проверяем дубликат по endpoint
+        existing = db.query(PushSubscription).filter_by(endpoint=endpoint).first()
+        if existing:
+            existing.user_id = user.id
+            existing.device_id = device_id
+            existing.last_used = utc_now()
+            db.commit()
+            return jsonify({'success': True, 'message': 'Updated'})
+
+        sub = PushSubscription(
+            user_id=user.id,
+            device_id=device_id,
+            endpoint=endpoint,
+            p256dh=p256dh,
+            auth=auth
+        )
+        db.add(sub)
+        db.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        db.rollback()
+        print(f"[Push/Subscribe] Error: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+    finally:
+        db.close()
 
 @app.route('/api/push/unsubscribe', methods=['POST'])
 def api_push_unsubscribe():
@@ -2353,15 +2073,6 @@ def api_call_end():
         return jsonify({'success': False, 'message': str(e)}), 500
     finally:
         db.close()
-
-@app.errorhandler(400)
-def bad_request(error):
-    """Глобальный обработчик ошибок 400 - возвращаем JSON вместо HTML"""
-    print(f"[400 Error] {error}")
-    print(f"[400 Error] Request path: {request.path}")
-    print(f"[400 Error] Request method: {request.method}")
-    print(f"[400 Error] Request data: {request.get_data(as_text=True)[:200]}")
-    return jsonify({'success': False, 'message': str(error.description)}), 400
 
 if __name__ == '__main__':
     import sys
