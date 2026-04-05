@@ -1521,6 +1521,11 @@ def serve_manifest():
     """PWA manifest"""
     return send_from_directory(os.path.abspath(os.path.dirname(__file__)), 'manifest.json', mimetype='application/json')
 
+@app.route('/rington.mp3')
+def serve_rington():
+    """Рингтон для входящих звонков"""
+    return send_from_directory(os.path.abspath(os.path.dirname(__file__)), 'rington.mp3', mimetype='audio/mpeg')
+
 # ============================================
 # === PUSH NOTIFICATIONS ===
 # ============================================
@@ -1558,16 +1563,20 @@ def send_push_notification(user_id, title, body, data=None):
                 }
             }
 
+            # Определяем является ли это входящим звонком
+            is_incoming_call = data and data.get('type') == 'incoming_call'
+
             payload = json.dumps({
                 'title': title,
                 'body': body,
                 'icon': '/Jetesk.png',
                 'badge': '/Jetesk.png',
-                'vibrate': [500, 200, 500, 200, 500],
+                'vibrate': [1000, 500, 1000, 500, 1000] if is_incoming_call else [200, 100, 200],
                 'tag': data.get('tag', 'jetesk-call') if data else 'jetesk-notification',
-                'requireInteraction': True,
+                'requireInteraction': is_incoming_call,
                 'renotify': True,
-                'data': data or {}
+                'data': data or {},
+                'timestamp': int(__import__('time').time() * 1000)
             })
 
             webpush(

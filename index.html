@@ -566,6 +566,19 @@
             font-size: 24px;
             transition: transform 0.15s, background 0.2s;
         }
+        .call-ctrl-btn svg {
+            display: block;
+            width: 28px;
+            height: 28px;
+            flex-shrink: 0;
+            pointer-events: none;
+            vertical-align: middle;
+        }
+        .call-ctrl-btn.accept svg,
+        .call-ctrl-btn.hangup svg {
+            width: 32px;
+            height: 32px;
+        }
         .call-ctrl-btn:hover {
             transform: scale(1.1);
         }
@@ -2603,8 +2616,8 @@
                         callerName = msg.content.replace('__CALL_MISSED__', '');
                     }
                     bubbleContent = '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;">' +
-                        '<svg width="20" height="20" viewBox="0 0 24 24" fill="#ef4444" style="flex-shrink:0;">' +
-                        '<path d="M19.602 14.393l-2.873-2.873c-.506-.506-1.261-.609-1.866-.298l-1.186.609c-.958-.553-1.827-1.29-2.575-2.15l.625-1.217c.304-.594.183-1.323-.291-1.797L8.564 3.795c-.552-.553-1.402-.656-2.07-.247C5.64 4.157 4.984 5.03 4.933 6.07c-.153 3.05 1.088 6.198 3.718 8.828 2.84 2.84 6.277 3.976 9.458 3.537.715-.101 1.364-.49 1.759-1.08l.56-.835c.329-.49.236-1.138-.217-1.533l-.609-.594zM12.804 12.81l1.186-.609c.605-.311 1.36-.208 1.866.298l2.873 2.873c.453.395.546 1.043.217 1.533l-.56.835c-.395.59-1.044.979-1.759 1.08-.543.075-1.102.086-1.662.032l2.69-2.69c.391-.391.391-1.024 0-1.414l-.609-.609c-.391-.391-1.024-.391-1.414 0l-2.823 2.823c-.279-.263-.552-.536-.816-.823l.811-.327zM6.542 5.044l2.873 2.873c.474.474.595 1.203.291 1.797l-.625 1.217c.368.433.767.836 1.193 1.206l1.664-3.227c.304-.594.183-1.323-.291-1.797L8.774 4.24c-.474-.474-1.203-.595-1.797-.291l-.435.095z"/>' +
+                        '<svg width="20" height="20" viewBox="0 0 24 24" fill="#ef4444" style="display:block;flex-shrink:0;width:20px;height:20px;">' +
+                        '<path d="M20.01 15.38c-1.23 0-2.42-.2-3.53-.56-.35-.12-.74-.03-1.01.24l-1.57 1.97c-2.83-1.35-5.48-3.9-6.89-6.83l1.95-1.66c.27-.28.35-.67.24-1.02-.37-1.11-.56-2.3-.56-3.53 0-.54-.45-.99-.99-.99H4.19C3.65 3 3 3.24 3 3.99 3 13.28 10.73 21 20.01 21c.71 0 .99-.63.99-1.18v-3.45c0-.54-.45-.99-.99-.99z"/>' +
                         '</svg>' +
                         '<span style="color:#ef4444;font-weight:600;">Пропущенный вызов</span>' +
                         '<span style="color:var(--text-secondary);font-size:13px;">' + escapeHtml(callerName) + '</span>' +
@@ -2671,8 +2684,8 @@
                         callerName = msg.content.replace('__CALL_MISSED__', '');
                     }
                     bubbleContent = '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;">' +
-                        '<svg width="20" height="20" viewBox="0 0 24 24" fill="#ef4444" style="flex-shrink:0;">' +
-                        '<path d="M19.602 14.393l-2.873-2.873c-.506-.506-1.261-.609-1.866-.298l-1.186.609c-.958-.553-1.827-1.29-2.575-2.15l.625-1.217c.304-.594.183-1.323-.291-1.797L8.564 3.795c-.552-.553-1.402-.656-2.07-.247C5.64 4.157 4.984 5.03 4.933 6.07c-.153 3.05 1.088 6.198 3.718 8.828 2.84 2.84 6.277 3.976 9.458 3.537.715-.101 1.364-.49 1.759-1.08l.56-.835c.329-.49.236-1.138-.217-1.533l-.609-.594zM12.804 12.81l1.186-.609c.605-.311 1.36-.208 1.866.298l2.873 2.873c.453.395.546 1.043.217 1.533l-.56.835c-.395.59-1.044.979-1.759 1.08-.543.075-1.102.086-1.662.032l2.69-2.69c.391-.391.391-1.024 0-1.414l-.609-.609c-.391-.391-1.024-.391-1.414 0l-2.823 2.823c-.279-.263-.552-.536-.816-.823l.811-.327zM6.542 5.044l2.873 2.873c.474.474.595 1.203.291 1.797l-.625 1.217c.368.433.767.836 1.193 1.206l1.664-3.227c.304-.594.183-1.323-.291-1.797L8.774 4.24c-.474-.474-1.203-.595-1.797-.291l-.435.095z"/>' +
+                        '<svg width="20" height="20" viewBox="0 0 24 24" fill="#ef4444" style="display:block;flex-shrink:0;width:20px;height:20px;">' +
+                        '<path d="M20.01 15.38c-1.23 0-2.42-.2-3.53-.56-.35-.12-.74-.03-1.01.24l-1.57 1.97c-2.83-1.35-5.48-3.9-6.89-6.83l1.95-1.66c.27-.28.35-.67.24-1.02-.37-1.11-.56-2.3-.56-3.53 0-.54-.45-.99-.99-.99H4.19C3.65 3 3 3.24 3 3.99 3 13.28 10.73 21 20.01 21c.71 0 .99-.63.99-1.18v-3.45c0-.54-.45-.99-.99-.99z"/>' +
                         '</svg>' +
                         '<span style="color:#ef4444;font-weight:600;">Пропущенный вызов</span>' +
                         '<span style="color:var(--text-secondary);font-size:13px;">' + escapeHtml(callerName) + '</span>' +
@@ -4849,6 +4862,8 @@
             }).then(function(result) {
                 console.log('[Call] Offer отправлен');
                 document.getElementById('callStatus').textContent = 'Ожидание ответа...';
+                // Запускаем гудки для звонящего
+                startCallerRingtone();
                 // Начинаем polling для получения answer
                 startCallPolling();
             }).catch(function(err) {
@@ -4922,12 +4937,15 @@
                         if (data.status === 'rejected' || data.status === 'ended' || data.status === 'missed') {
                             document.getElementById('callStatus').textContent = 'Звонок завершён';
                             stopCallPolling();
+                            stopCallerRingtone();
                             setTimeout(function() { endCall(); }, 1000);
                             return;
                         }
                         // Если есть answer — подключаемся
                         if (data.answer) {
                             stopCallPolling();
+                            // Останавливаем гудки — звонок соединился
+                            stopCallerRingtone();
                             return peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer))
                                 .then(function() {
                                     document.getElementById('callStatus').textContent = 'Подключение...';
@@ -5000,6 +5018,7 @@
 
         // Проверка входящих звонков (как в WhatsApp — быстрая, 500ms)
         var ringtoneAudio = null;
+        var callerRingtoneAudio = null; // Гудки для звонящего
         var wakeLock = null;
         var callNotification = null;
 
@@ -5051,40 +5070,24 @@
             }
         }
 
-        // Непрерывный рингтон через Audio (как в WhatsApp)
+        // Непрерывный рингтон через Audio (как в WhatsApp) — для ПРИНИМАЮЩЕГО
         function playCallRingtone() {
             stopCallRingtone();
             try {
-                // Создаём рингтон через Oscillator — непрерывный
-                var audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                ringtoneAudio = { context: audioCtx, oscillators: [] };
-
-                function playRing() {
-                    if (!isIncomingCall || !audioCtx) return;
-                    // Двойной гудок как в телефоне
-                    for (var i = 0; i < 2; i++) {
-                        (function(idx) {
-                            setTimeout(function() {
-                                if (!isIncomingCall || !audioCtx) return;
-                                var osc = audioCtx.createOscillator();
-                                var gain = audioCtx.createGain();
-                                osc.connect(gain);
-                                gain.connect(audioCtx.destination);
-                                osc.frequency.value = 425; // Стандартный тон телефона
-                                osc.type = 'sine';
-                                gain.gain.value = 0.5;
-                                osc.start(audioCtx.currentTime);
-                                osc.stop(audioCtx.currentTime + 0.4);
-                                ringtoneAudio.oscillators.push(osc);
-                            }, idx * 2000);
-                        })(i);
-                    }
-                    // Повторяем каждые 4 секунды
-                    setTimeout(function() {
-                        if (isIncomingCall) playRing();
-                    }, 4000);
-                }
-                playRing();
+                // Используем rington.mp3 файл
+                ringtoneAudio = new Audio('/rington.mp3');
+                ringtoneAudio.loop = true;
+                ringtoneAudio.volume = 1.0;
+                ringtoneAudio.play().catch(function(e) {
+                    console.log('[Call] Ringtone autoplay blocked:', e);
+                    // Если autoplay заблокирован — пробуем по клику
+                    document.addEventListener('click', function unblockRingtone() {
+                        if (ringtoneAudio && isIncomingCall) {
+                            ringtoneAudio.play().catch(function(){});
+                        }
+                        document.removeEventListener('click', unblockRingtone);
+                    });
+                });
             } catch(e) {
                 console.error('[Call] Ringtone error:', e);
             }
@@ -5092,13 +5095,55 @@
 
         function stopCallRingtone() {
             if (ringtoneAudio) {
-                ringtoneAudio.oscillators.forEach(function(osc) {
+                try {
+                    ringtoneAudio.pause();
+                    ringtoneAudio.src = '';
+                } catch(e) {}
+                ringtoneAudio = null;
+            }
+        }
+
+        // Гудки для ЗВОНЯЩЕГО (как в телефоне — прерывистый сигнал)
+        function startCallerRingtone() {
+            stopCallerRingtone();
+            try {
+                var audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                callerRingtoneAudio = { context: audioCtx, oscillators: [] };
+
+                function playRing() {
+                    if (!isInCall || isIncomingCall || !audioCtx) return;
+                    // Одиночный гудок 1 сек, пауза 3 сек (стандарт)
+                    var osc = audioCtx.createOscillator();
+                    var gain = audioCtx.createGain();
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.frequency.value = 425; // Стандартный тон
+                    osc.type = 'sine';
+                    gain.gain.value = 0.3;
+                    osc.start(audioCtx.currentTime);
+                    osc.stop(audioCtx.currentTime + 1.0);
+                    callerRingtoneAudio.oscillators.push(osc);
+
+                    // Повторяем каждые 4 секунды
+                    setTimeout(function() {
+                        if (isInCall && !isIncomingCall) playRing();
+                    }, 4000);
+                }
+                playRing();
+            } catch(e) {
+                console.error('[Call] Caller ringtone error:', e);
+            }
+        }
+
+        function stopCallerRingtone() {
+            if (callerRingtoneAudio) {
+                callerRingtoneAudio.oscillators.forEach(function(osc) {
                     try { osc.stop(); } catch(e) {}
                 });
-                if (ringtoneAudio.context) {
-                    ringtoneAudio.context.close();
+                if (callerRingtoneAudio.context) {
+                    callerRingtoneAudio.context.close();
                 }
-                ringtoneAudio = null;
+                callerRingtoneAudio = null;
             }
         }
 
@@ -5182,6 +5227,8 @@
                         if (!data || !data.status) return;
                         if (data.status === 'ended' || data.status === 'rejected') {
                             // Звонящий сбросил
+                            stopCallRingtone();
+                            stopCallerRingtone();
                             stopIncomingRingtone();
                             stopCallPolling();
                             document.getElementById('callStatus').textContent = 'Звонок отменён';
@@ -5248,6 +5295,7 @@
         function rejectCall() {
             if (!currentCallId) return;
             stopCallRingtone();
+            stopCallerRingtone();
             stopIncomingRingtone();
             stopCallPolling();
             closeCallNotification();
@@ -5285,6 +5333,7 @@
             stopCallTimer();
             stopCallPolling();
             stopCallRingtone();
+            stopCallerRingtone();
             stopIncomingRingtone();
             closeCallNotification();
             releaseWakeLock();

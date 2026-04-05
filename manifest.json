@@ -30,5 +30,6 @@
       "url": "/",
       "icons": [{"src": "Jetesk.png", "sizes": "96x96"}]
     }
-  ]
+  ],
+  "gcm_sender_id": "103953800507"
 }

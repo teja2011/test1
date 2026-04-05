@@ -1,4 +1,4 @@
-// Service Worker для PWA - кэширование, offline, push
+// Service Worker для PWA - кэширование, offline, push, incoming call
 const CACHE_NAME = 'jetesk-v2';
 const STATIC_CACHE = 'jetesk-static-v2';
 const DYNAMIC_CACHE = 'jetesk-dynamic-v2';
@@ -6,7 +6,8 @@ const API_CACHE = 'jetesk-api-v2';
 
 const STATIC_ASSETS = [
     '/manifest.json',
-    '/Jetesk.png'
+    '/Jetesk.png',
+    '/rington.mp3'
 ];
 
 const MAX_CACHE_SIZE = 50;
@@ -19,7 +20,6 @@ self.addEventListener('install', (event) => {
         caches.open(STATIC_CACHE)
             .then((cache) => {
                 console.log('[SW] Кэширование статики');
-                // Кэшируем только основные файлы, игнорируя ошибки
                 return Promise.all(
                     STATIC_ASSETS.map(url => {
                         return fetch(url)
@@ -86,24 +86,20 @@ self.addEventListener('push', (event) => {
         body: data.body || 'У вас новое сообщение',
         icon: data.icon || '/Jetesk.png',
         badge: data.badge || '/Jetesk.png',
-        vibrate: isCall ? [500, 200, 500, 200, 500, 200, 500] : (data.vibrate || [200, 100, 200]),
+        vibrate: isCall ? [1000, 500, 1000, 500, 1000] : (data.vibrate || [200, 100, 200]),
         data: data.data || {},
-        requireInteraction: data.requireInteraction !== undefined ? data.requireInteraction : isCall,
+        requireInteraction: isCall ? true : (data.requireInteraction || false),
+        // PWA incoming-call notification — не исчезает, с action buttons
         actions: isCall ? [
             {
                 action: 'answer',
                 title: '📞 Ответить',
-                icon: '/Jetesk.png'
+                type: ''
             },
             {
                 action: 'reject',
                 title: '✕ Отклонить',
-                icon: '/Jetesk.png'
-            },
-            {
-                action: 'open',
-                title: 'Открыть чат',
-                icon: '/Jetesk.png'
+                type: ''
             }
         ] : [
             {
@@ -119,17 +115,24 @@ self.addEventListener('push', (event) => {
         ],
         tag: data.data?.call_id ? `call-${data.data.call_id}` : (data.data?.message_id ? `message-${data.data.message_id}` : 'jetesk-notification'),
         renotify: data.renotify !== undefined ? data.renotify : true,
-        silent: false
+        silent: false,
+        // Критично: для incoming-call уведомлений — будильник на заблокированном экране
+        timestamp: Date.now()
     };
+
+    // Для входящих звонков — используем category для iOS/Android incoming call
+    if (isCall) {
+        options.category = 'INCOMING_CALL';
+    }
 
     event.waitUntil(
         self.registration.showNotification(title, options)
     );
 });
 
-// Обработка клика по уведомлению
+// Обработка клика по уведомлению и action buttons
 self.addEventListener('notificationclick', (event) => {
-    console.log('[SW] Клик по уведомлению:', event);
+    console.log('[SW] Notification click:', event.action);
 
     event.notification.close();
 
@@ -137,27 +140,38 @@ self.addEventListener('notificationclick', (event) => {
     const isCall = callData && callData.type === 'incoming_call';
 
     if (isCall) {
+        // Кнопка "Ответить"
         if (event.action === 'answer') {
-            // Открываем чат — приложение обработит входящий
             event.waitUntil(
-                clients.matchAll({ type: 'window', includeUncontrolled: true })
-                    .then((windowClients) => {
-                        const jeteskWindow = windowClients.find(
-                            (client) => client.url.includes('/chat') || client.url === '/'
-                        );
-                        if (jeteskWindow && jeteskWindow.focus) {
-                            return jeteskWindow.focus();
-                        }
-                        if (clients.openWindow) {
-                            return clients.openWindow('/chat');
-                        }
-                    })
+                // Отправляем сигнал на сервер что приняли звонок
+                fetch('/api/call/accept', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ call_id: callData.call_id }),
+                    credentials: 'include'
+                })
+                .then(() => {
+                    // Открываем/фокусируем приложение
+                    return clients.matchAll({ type: 'window', includeUncontrolled: true });
+                })
+                .then((windowClients) => {
+                    const jeteskWindow = windowClients.find(
+                        (client) => client.url.includes('/chat') || client.url === '/'
+                    );
+                    if (jeteskWindow && jeteskWindow.focus) {
+                        return jeteskWindow.focus();
+                    }
+                    if (clients.openWindow) {
+                        return clients.openWindow('/chat');
+                    }
+                })
+                .catch(err => console.error('[SW] Accept call error:', err))
             );
             return;
         }
 
+        // Кнопка "Отклонить"
         if (event.action === 'reject') {
-            // Отклоняем звонок через API
             if (callData.call_id) {
                 event.waitUntil(
                     fetch('/api/call/reject', {
@@ -165,7 +179,7 @@ self.addEventListener('notificationclick', (event) => {
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ call_id: callData.call_id }),
                         credentials: 'include'
-                    })
+                    }).catch(err => console.error('[SW] Reject error:', err))
                 );
             }
             return;
@@ -176,11 +190,10 @@ self.addEventListener('notificationclick', (event) => {
         return;
     }
 
-    // Открываем приложение или фокусируем существующую вкладку
+    // Обычный клик — открываем/фокусируем приложение
     event.waitUntil(
         clients.matchAll({ type: 'window', includeUncontrolled: true })
             .then((windowClients) => {
-                // Ищем вкладку с нашим приложением
                 const jeteskWindow = windowClients.find(
                     (client) => client.url.includes('/chat') || client.url === '/'
                 );
@@ -189,7 +202,6 @@ self.addEventListener('notificationclick', (event) => {
                     return jeteskWindow.focus();
                 }
 
-                // Если нет открытой вкладки, открываем новую
                 if (clients.openWindow) {
                     return clients.openWindow('/chat');
                 }
