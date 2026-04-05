@@ -473,7 +473,7 @@
             color: var(--text-secondary);
             border: none;
             cursor: pointer;
-            display: none;
+            display: flex;
             align-items: center;
             justify-content: center;
             flex-shrink: 0;
@@ -483,8 +483,8 @@
             color: #22c55e;
             transform: scale(1.1);
         }
-        .call-btn.visible {
-            display: flex;
+        .call-btn.hidden {
+            display: none;
         }
         .call-modal-overlay {
             display: none;
@@ -2504,10 +2504,6 @@
                     statusEl.className = 'chat-title-status';
                 }
             }
-
-            // Показываем кнопку звонка
-            var callBtn = document.getElementById('callBtn');
-            if (callBtn) callBtn.classList.add('visible');
         }
 
         function hideFooter() {
@@ -3971,10 +3967,6 @@
         }
         
         function finishShowChat() {
-            // Принудительно показываем кнопку звонка
-            var callBtn = document.getElementById('callBtn');
-            if (callBtn) callBtn.classList.add('visible');
-
             var headerAvatar = document.getElementById('userAvatar');
             if (currentUser.avatar_url) {
                 headerAvatar.style.backgroundImage = 'url(' + currentUser.avatar_url + ')';
