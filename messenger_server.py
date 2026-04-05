@@ -664,6 +664,7 @@ def api_users():
                 'avatar_color': u.avatar_color or '6366f1',
                 'avatar_url': u.avatar_url,
                 'jt_username': u.jt_username,
+                'bio': u.bio or '',
                 'is_online': is_online,
                 'last_seen': last_seen_str,
                 'unread_count': unread_count

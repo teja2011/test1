@@ -2640,21 +2640,13 @@
             // Username
             document.getElementById('chatProfileUsername').innerHTML = '<span>' + (targetUser.jt_username ? '@' + targetUser.jt_username : 'Не указано') + '</span>';
 
-            // Bio — запросим с сервера
+            // Bio
             var bioEl = document.getElementById('chatProfileBio');
-            bioEl.innerHTML = '<span>Загрузка...</span>';
-            fetch('/api/users')
-                .then(function(r) { return r.json(); })
-                .then(function(ul) {
-                    for (var j = 0; j < ul.length; j++) {
-                        if (ul[j].id === selectedUserId && ul[j].bio) {
-                            bioEl.innerHTML = '<span>' + escapeHtml(ul[j].bio) + '</span>';
-                            return;
-                        }
-                    }
-                    bioEl.innerHTML = '<span>Не указано</span>';
-                })
-                .catch(function() { bioEl.innerHTML = '<span>Не указано</span>'; });
+            if (targetUser.bio) {
+                bioEl.innerHTML = '<span>' + escapeHtml(targetUser.bio) + '</span>';
+            } else {
+                bioEl.innerHTML = '<span>Не указано</span>';
+            }
 
             // Mute state
             updateChatProfileMute();
@@ -4396,6 +4388,8 @@
                 if (result.success) {
                     if (currentUser) currentUser.bio = result.bio;
                     btn.textContent = '✅';
+                    // Обновляем список пользователей чтобы bio было видно в профиле
+                    loadUsers();
                     setTimeout(function(){ btn.textContent = '💾 Сохранить'; btn.disabled = false; }, 1500);
                 } else {
                     throw new Error(result.message);
