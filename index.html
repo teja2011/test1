@@ -4862,6 +4862,8 @@
             }).then(function(result) {
                 console.log('[Call] Offer отправлен');
                 document.getElementById('callStatus').textContent = 'Ожидание ответа...';
+                // Гудки для звонящего
+                startCallerRingtone();
                 // Начинаем polling для получения answer
                 startCallPolling();
             }).catch(function(err) {
@@ -4880,6 +4882,15 @@
 
         function createPeerConnection() {
             peerConnection = new RTCPeerConnection(rtcConfig);
+
+            // Таймаут подключения — 30 секунд
+            var connectionTimeout = setTimeout(function() {
+                if (peerConnection && peerConnection.connectionState !== 'connected') {
+                    console.log('[Call] Подключение не удалось за 30 сек');
+                    document.getElementById('callStatus').textContent = 'Не удалось подключиться';
+                    setTimeout(function() { endCall(); }, 2000);
+                }
+            }, 30000);
 
             // Добавляем локальный аудио трек
             if (localStream) {
@@ -4915,9 +4926,19 @@
             peerConnection.addEventListener('connectionstatechange', function() {
                 console.log('[Call] Состояние:', peerConnection.connectionState);
                 if (peerConnection.connectionState === 'connected') {
+                    clearTimeout(connectionTimeout);
+                    if (peerConnection._acceptTimeout) {
+                        clearTimeout(peerConnection._acceptTimeout);
+                        peerConnection._acceptTimeout = null;
+                    }
                     document.getElementById('callStatus').textContent = 'Разговор';
                     startCallTimer();
                 } else if (peerConnection.connectionState === 'disconnected' || peerConnection.connectionState === 'failed') {
+                    clearTimeout(connectionTimeout);
+                    if (peerConnection._acceptTimeout) {
+                        clearTimeout(peerConnection._acceptTimeout);
+                        peerConnection._acceptTimeout = null;
+                    }
                     endCall();
                 }
             });
@@ -4935,12 +4956,14 @@
                         if (data.status === 'rejected' || data.status === 'ended' || data.status === 'missed') {
                             document.getElementById('callStatus').textContent = 'Звонок завершён';
                             stopCallPolling();
+                            stopCallerRingtone();
                             setTimeout(function() { endCall(); }, 1000);
                             return;
                         }
                         // Если есть answer — подключаемся
                         if (data.answer) {
                             stopCallPolling();
+                            stopCallerRingtone();
                             return peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer))
                                 .then(function() {
                                     document.getElementById('callStatus').textContent = 'Подключение...';
@@ -5013,6 +5036,8 @@
 
         // Проверка входящих звонков (как в WhatsApp — быстрая, 500ms)
         var ringtoneAudio = null;
+        var callerRingtoneAudio = null;
+        var callerRingtoneTimer = null;
         var wakeLock = null;
         var callNotification = null;
 
@@ -5064,17 +5089,15 @@
             }
         }
 
-        // Непрерывный рингтон через Audio (как в WhatsApp) — для ПРИНИМАЮЩЕГО
+        // РИНГТОН для ПРИНИМАЮЩЕГО — играет файл /rington.mp3
         function playCallRingtone() {
             stopCallRingtone();
             try {
-                // Используем rington.mp3 файл
                 ringtoneAudio = new Audio('/rington.mp3');
                 ringtoneAudio.loop = true;
                 ringtoneAudio.volume = 1.0;
                 ringtoneAudio.play().catch(function(e) {
                     console.log('[Call] Ringtone autoplay blocked:', e);
-                    // Если autoplay заблокирован — пробуем по клику
                     document.addEventListener('click', function unblockRingtone() {
                         if (ringtoneAudio && isIncomingCall) {
                             ringtoneAudio.play().catch(function(){});
@@ -5089,11 +5112,51 @@
 
         function stopCallRingtone() {
             if (ringtoneAudio) {
-                try {
-                    ringtoneAudio.pause();
-                    ringtoneAudio.src = '';
-                } catch(e) {}
+                try { ringtoneAudio.pause(); ringtoneAudio.src = ''; } catch(e) {}
                 ringtoneAudio = null;
+            }
+        }
+
+        // Алиас для обратной совместимости
+        function stopIncomingRingtone() {
+            stopCallRingtone();
+        }
+
+        // ГУДКИ для ЗВОНЯЩЕГО — прерывистый сигнал 425 Гц
+        function startCallerRingtone() {
+            stopCallerRingtone();
+            try {
+                callerRingtoneAudio = new (window.AudioContext || window.webkitAudioContext)();
+                function beep() {
+                    if (!isInCall || isIncomingCall || !callerRingtoneAudio) return;
+                    var osc = callerRingtoneAudio.createOscillator();
+                    var gain = callerRingtoneAudio.createGain();
+                    osc.connect(gain);
+                    gain.connect(callerRingtoneAudio.destination);
+                    osc.frequency.value = 425;
+                    osc.type = 'sine';
+                    gain.gain.value = 0.3;
+                    osc.start(callerRingtoneAudio.currentTime);
+                    osc.stop(callerRingtoneAudio.currentTime + 1.0);
+                    // Пауза 3 сек, потом снова гудок
+                    callerRingtoneTimer = setTimeout(function() {
+                        if (isInCall && !isIncomingCall) beep();
+                    }, 3000);
+                }
+                beep();
+            } catch(e) {
+                console.error('[Call] Caller ringtone error:', e);
+            }
+        }
+
+        function stopCallerRingtone() {
+            if (callerRingtoneTimer) {
+                clearTimeout(callerRingtoneTimer);
+                callerRingtoneTimer = null;
+            }
+            if (callerRingtoneAudio) {
+                try { callerRingtoneAudio.close(); } catch(e) {}
+                callerRingtoneAudio = null;
             }
         }
 
@@ -5189,8 +5252,8 @@
 
         function acceptCall() {
             if (!currentCallId) return;
+            // Сразу останавливаем рингтон
             stopCallRingtone();
-            stopIncomingRingtone();
             stopCallPolling();
             closeCallNotification();
             releaseWakeLock();
@@ -5231,8 +5294,18 @@
             })
             .then(function() {
                 document.getElementById('callStatus').textContent = 'Подключение...';
+                // Таймаут для принимающего — 30 сек
+                var acceptTimeout = setTimeout(function() {
+                    if (peerConnection && peerConnection.connectionState !== 'connected') {
+                        console.log('[Call] Подключение не удалось за 30 сек (accept)');
+                        document.getElementById('callStatus').textContent = 'Не удалось подключиться';
+                        setTimeout(function() { endCall(); }, 2000);
+                    }
+                }, 30000);
                 // Обмениваемся ICE кандидатами
                 exchangeIceCandidates();
+                // Сохраним timeout чтобы отменить при connected
+                peerConnection._acceptTimeout = acceptTimeout;
             })
             .catch(function(err) {
                 console.error('[Call] Accept error:', err);
@@ -5243,7 +5316,7 @@
         function rejectCall() {
             if (!currentCallId) return;
             stopCallRingtone();
-            stopIncomingRingtone();
+            stopCallerRingtone();
             stopCallPolling();
             closeCallNotification();
             releaseWakeLock();
@@ -5280,7 +5353,7 @@
             stopCallTimer();
             stopCallPolling();
             stopCallRingtone();
-            stopIncomingRingtone();
+            stopCallerRingtone();
             closeCallNotification();
             releaseWakeLock();
 
