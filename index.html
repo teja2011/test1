@@ -1862,7 +1862,21 @@
         function apiFetch(url, options) {
             options = options || {};
             options.credentials = 'include';
-            return fetch(url, options);
+            return fetch(url, options)
+                .then(function(response) {
+                    // Проверяем что ответ — JSON, а не HTML-страница ошибки
+                    var ct = response.headers.get('content-type') || '';
+                    if (ct.indexOf('application/json') === -1) {
+                        // Сервер вернул HTML (ошибка 404/500/Vercel error)
+                        return response.text().then(function(text) {
+                            var msg = text.substring(0, 200);
+                            // Убираем HTML теги для читаемости
+                            msg = msg.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+                            throw new Error('HTTP ' + response.status + ': ' + msg);
+                        });
+                    }
+                    return response;
+                });
         }
         
         // === IndexedDB функции для кэширования сообщений ===
@@ -4136,10 +4150,14 @@
                 loadLastMessages();
             }, 1000);
 
-            // Проверяем новые сообщения каждые 3 секунды (не перезаписываем, а добавляем)
+            // Проверяем новые сообщения каждые 3 секунды
             messagesInterval = setInterval(function() {
                 if (currentLoadUserId !== null && currentLoadUserId === selectedUserId) {
                     checkNewMessages();
+                }
+                // Проверяем уведомления когда не в активном чате
+                if (selectedUserId !== 0 || !document.hasFocus()) {
+                    checkUnreadNotifications();
                 }
             }, 3000);
 
@@ -4353,30 +4371,40 @@
 
         function settingsSaveBio() {
             var input = document.getElementById('settingsBioInput');
+            var btn = document.getElementById('settingsSaveBioBtn');
+            if (!input || !btn) return;
+            
             var newBio = input.value.trim();
-
             if (newBio.length > 150) {
                 alert('Описание слишком длинное (максимум 150 символов)');
                 return;
             }
+
+            btn.disabled = true;
+            btn.textContent = '⏳';
 
             apiFetch('/api/settings/change-bio', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({bio: newBio})
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) {
+                if (!r.ok) return r.json().then(function(e){ throw new Error(e.message || 'HTTP '+r.status); });
+                return r.json();
+            })
             .then(function(result) {
                 if (result.success) {
                     if (currentUser) currentUser.bio = result.bio;
-                    alert('Поле "о себе" обновлено!');
+                    btn.textContent = '✅';
+                    setTimeout(function(){ btn.textContent = '💾 Сохранить'; btn.disabled = false; }, 1500);
                 } else {
-                    alert('Ошибка: ' + (result.message || 'Неизвестная ошибка'));
+                    throw new Error(result.message);
                 }
             })
             .catch(function(err) {
-                console.error('Ошибка сохранения bio:', err);
                 alert('Ошибка: ' + err.message);
+                btn.textContent = '💾 Сохранить';
+                btn.disabled = false;
             });
         }
 
@@ -4883,10 +4911,13 @@
             var name = document.getElementById('loginNameInput').value.trim();
             var password = document.getElementById('loginPasswordInput').value;
             var errorEl = document.getElementById('loginError');
+            var btn = document.getElementById('loginBtn');
             if (!name) { errorEl.textContent = 'Введите имя'; return; }
             if (name.length < 2) { errorEl.textContent = 'Имя должно быть не менее 2 символов'; return; }
             if (!password) { errorEl.textContent = 'Введите пароль'; return; }
             if (password.length < 6) { errorEl.textContent = 'Пароль должен быть не менее 6 символов'; return; }
+
+            if (btn) { btn.disabled = true; btn.textContent = 'Вход...'; }
 
             apiFetch('/api/login', {
                 method: 'POST',
@@ -4898,19 +4929,25 @@
                     device_name: currentDeviceName
                 })
             })
-            .then(function(r) { return r.json(); })
+            .then(function(r) {
+                if (!r.ok) return r.json().then(function(e){ throw new Error(e.message || 'HTTP '+r.status); });
+                return r.json();
+            })
             .then(function(result) {
                 if (result.success) {
                     currentUser = result.user;
-                    if (result.current_device) {
-                        currentUser.current_device = result.current_device;
-                    }
+                    if (result.current_device) currentUser.current_device = result.current_device;
                     showChat();
                 } else {
                     errorEl.textContent = result.message || 'Неверный логин или пароль';
                 }
             })
-            .catch(function(err) { errorEl.textContent = 'Ошибка: ' + err.message; });
+            .catch(function(err) {
+                errorEl.textContent = 'Ошибка: ' + err.message;
+            })
+            .finally(function() {
+                if (btn) { btn.disabled = false; btn.textContent = 'Войти'; }
+            });
         }
 
         // Обработчик регистрации
@@ -5018,8 +5055,127 @@
         var pushToggleBtn = document.getElementById('pushToggleBtn');
         if (pushToggleBtn) {
             pushToggleBtn.addEventListener('click', function() {
-                alert('Push-уведомления будут доступны в следующей версии');
+                if (!('Notification' in window)) {
+                    document.getElementById('pushStatus').textContent = 'Уведомления не поддерживаются браузером ❌';
+                    return;
+                }
+                
+                if (Notification.permission === 'granted') {
+                    updatePushUI('✅ Уведомления уже включены', true);
+                } else if (Notification.permission === 'denied') {
+                    var isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+                    document.getElementById('pushStatus').textContent = isIOS 
+                        ? '📱 iOS: Добавьте сайт на экран "Домой" через Поделиться' 
+                        : '❌ Заблокированы в настройках браузера';
+                } else {
+                    Notification.requestPermission().then(function(perm) {
+                        if (perm === 'granted') {
+                            updatePushUI('✅ Уведомления включены', true);
+                            if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+                                showToast('📱 Для работы в фоне на iOS: "Поделиться" → "На экран Домой"');
+                            }
+                        } else {
+                            updatePushUI('❌ Разрешение не получено', false);
+                        }
+                    });
+                }
             });
+        }
+
+        function updatePushUI(text, success) {
+            var statusEl = document.getElementById('pushStatus');
+            var btnEl = document.getElementById('pushToggleBtn');
+            if (statusEl) statusEl.textContent = text;
+            if (btnEl) {
+                btnEl.textContent = success ? '✅ Уведомления включены' : '🔕 Включить уведомления';
+                if (success) btnEl.disabled = true;
+            }
+        }
+
+        function showToast(msg) {
+            var t = document.createElement('div');
+            t.textContent = msg;
+            Object.assign(t.style, {
+                position: 'fixed', bottom: '20px', left: '50%', transform: 'translateX(-50%)',
+                background: '#1e293b', color: '#f1f5f9', padding: '12px 18px', borderRadius: '12px',
+                zIndex: '9999', fontSize: '14px', textAlign: 'center', maxWidth: '90%',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.4)', whiteSpace: 'pre-wrap', lineHeight: '1.4'
+            });
+            document.body.appendChild(t);
+            setTimeout(function(){ t.remove(); }, 6000);
+        }
+
+        function showSystemNotification(from, content, fileType) {
+            if (!('Notification' in window)) return;
+            if (Notification.permission !== 'granted') return;
+            // Не показываем если уже в этом чате и окно в фокусе
+            if (document.hasFocus() && selectedUserId > 0) return;
+
+            var body = fileType === 'voice' ? '🎤 Голосовое сообщение' :
+                       fileType === 'image' ? '📷 Фото' :
+                       fileType === 'video_circle' ? '🎥 Видео-кружочек' :
+                       (content ? content.substring(0, 80) : 'Новое сообщение');
+
+            try {
+                var n = new Notification('💬 ' + from, {
+                    body: body,
+                    icon: '/Jetesk.png',
+                    badge: '/Jetesk.png',
+                    tag: 'jetesk-' + Date.now(),
+                    requireInteraction: false,
+                    silent: false
+                });
+                n.onclick = function() {
+                    window.focus();
+                    n.close();
+                };
+                // Вибрация на телефоне
+                if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+            } catch(e) {}
+        }
+
+        var lastUnreadCount = 0;
+        var notifiedMsgIds = {};
+
+        function checkNewMessages() {
+            var url = selectedUserId === 0 ? '/api/messages' : '/api/messages/' + selectedUserId;
+            apiFetch(url)
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (!Array.isArray(data)) return;
+                    for (var i = 0; i < data.length; i++) {
+                        var m = data[i];
+                        if (!m.is_mine && !notifiedMsgIds[m.id]) {
+                            notifiedMsgIds[m.id] = true;
+                            if (!document.hasFocus() || selectedUserId === 0) {
+                                showSystemNotification(m.sender, m.content, m.file_type);
+                            }
+                        }
+                    }
+                    lastKnownMessageCount = data.length;
+                })
+                .catch(function() {});
+        }
+
+        function checkUnreadNotifications() {
+            apiFetch('/api/users')
+                .then(function(r) { return r.json(); })
+                .then(function(ul) {
+                    var totalUnread = 0;
+                    for (var i = 0; i < ul.length; i++) {
+                        totalUnread += (ul[i].unread_count || 0);
+                    }
+                    if (totalUnread > lastUnreadCount && totalUnread > 0) {
+                        for (var j = 0; j < ul.length; j++) {
+                            if (ul[j].unread_count > 0 && ul[j].id !== selectedUserId) {
+                                showSystemNotification(ul[j].username, 'Новое сообщение', null);
+                                break;
+                            }
+                        }
+                    }
+                    lastUnreadCount = totalUnread;
+                })
+                .catch(function() {});
         }
 
         // Переключатель темы

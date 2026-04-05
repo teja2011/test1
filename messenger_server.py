@@ -351,6 +351,34 @@ def before_request():
     """Гарантировать что таблицы существуют перед каждым запросом (для serverless)"""
     ensure_tables()
 
+# Глобальная обработка ошибок для API — всегда возвращает JSON
+@app.errorhandler(Exception)
+def handle_exception(e):
+    """Catch-all: если что-то упало — возвращаем JSON вместо HTML"""
+    # Проверяем что это API запрос
+    if request.path.startswith('/api/'):
+        print(f"[API Error] {request.path}: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'message': 'Server error: ' + str(e)
+        }), 500
+    # Для не-API запросов — стандартная обработка
+    raise e
+
+@app.errorhandler(404)
+def handle_404(e):
+    if request.path.startswith('/api/'):
+        return jsonify({'success': False, 'message': 'Endpoint not found'}), 404
+    raise e
+
+@app.errorhandler(400)
+def handle_400(e):
+    if request.path.startswith('/api/'):
+        return jsonify({'success': False, 'message': 'Bad request: ' + str(e.description)}), 400
+    raise e
+
 def generate_avatar_color():
     import random
     return random.choice(['6366f1', '10b981', 'f59e0b', 'ef4444', '8b5cf6', 'ec4899', '0891b2', '7c3aed'])
@@ -696,7 +724,9 @@ def api_send():
     user = get_current_user()
     if not user:
         return jsonify({'success': False, 'message': 'Not authorized'})
-    data = request.json
+    data = request.get_json(silent=True)
+    if not data:
+        return jsonify({'success': False, 'message': 'Invalid request format'}), 400
     content = data.get('content', '').strip()
     recipient_id = data.get('recipient_id')
     if not content:
@@ -1047,12 +1077,24 @@ def api_change_bio():
         if not user:
             return jsonify({'success': False, 'message': 'Not authorized'}), 401
         data = request.get_json(silent=True)
-        if not data:
+        if not data or 'bio' not in data:
             return jsonify({'success': False, 'message': 'Invalid data'}), 400
-        bio = data.get('bio', '').strip()[:150]
-        user.bio = bio
+        bio = str(data.get('bio', '')).strip()[:150]
+        
         db = get_db()
-        db.commit()
+        try:
+            db.execute(text("UPDATE users SET bio = :bio WHERE id = :uid"), {'bio': bio, 'uid': user.id})
+            db.commit()
+        except Exception as col_err:
+            db.rollback()
+            # Колонки bio нет — создаём её
+            if 'bio' in str(col_err).lower() or 'column' in str(col_err).lower():
+                db.execute(text("ALTER TABLE users ADD COLUMN bio VARCHAR(150) DEFAULT ''"))
+                db.commit()
+                db.execute(text("UPDATE users SET bio = :bio WHERE id = :uid"), {'bio': bio, 'uid': user.id})
+                db.commit()
+            else:
+                raise
         db.close()
         return jsonify({'success': True, 'bio': bio})
     except Exception as e:
