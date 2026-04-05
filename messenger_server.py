@@ -177,6 +177,7 @@ class User(Base):
     avatar_color = Column(String(20), default='6366f1')
     avatar_url = Column(String(500), nullable=True)
     jt_username = Column(String(50), unique=True, nullable=True)
+    bio = Column(String(150), nullable=True)  # Поле "о себе"
     last_seen = Column(DateTime, nullable=True)
 
 class Message(Base):
@@ -378,7 +379,14 @@ def api_me():
     user = get_current_user()
     if user:
         print(f"[API /me] User: id={user.id}, username={user.username}, avatar_url={user.avatar_url}, jt_username={user.jt_username}")
-        return jsonify({'id': user.id, 'username': user.username, 'avatar_color': user.avatar_color or '6366f1', 'avatar_url': user.avatar_url, 'jt_username': user.jt_username})
+        return jsonify({
+            'id': user.id,
+            'username': user.username,
+            'avatar_color': user.avatar_color or '6366f1',
+            'avatar_url': user.avatar_url,
+            'jt_username': user.jt_username,
+            'bio': user.bio or ''
+        })
     print(f"[API /me] No user (cookie: {request.cookies.get('user_id')})")
     return jsonify(None)
 
@@ -1111,6 +1119,40 @@ def api_change_username():
         db.rollback()
         print(f"❌ change-username: ошибка базы данных: {e}")
         db.close()
+        return jsonify({'success': False, 'message': str(e)})
+
+@app.route('/api/settings/change-bio', methods=['POST'])
+def api_change_bio():
+    """Изменить поле 'о себе'"""
+    try:
+        user = get_current_user()
+        if not user:
+            return jsonify({'success': False, 'message': 'Not authorized'})
+
+        data = request.get_json(silent=True)
+        if not data:
+            return jsonify({'success': False, 'message': 'Invalid request data'})
+        
+        bio = data.get('bio', '').strip()
+
+        if len(bio) > 150:
+            return jsonify({'success': False, 'message': 'Описание слишком длинное (максимум 150 символов)'})
+
+        db = get_db()
+        try:
+            user.bio = bio if bio else None
+            db.commit()
+            return jsonify({'success': True, 'bio': user.bio or ''})
+        except Exception as e:
+            db.rollback()
+            print(f"❌ change-bio: ошибка базы данных: {e}")
+            return jsonify({'success': False, 'message': str(e)})
+        finally:
+            db.close()
+    except Exception as e:
+        print(f"Unexpected error in api_change_bio: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'success': False, 'message': str(e)})
 
 @app.route('/api/last-messages')
