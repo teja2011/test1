@@ -821,6 +821,21 @@ def api_send():
                     sender_id=user.id,
                     notif_type='message'
                 )
+                # Отправляем Push-уведомление через Service Worker
+                try:
+                    send_push_notification(
+                        user_id=recipient_id,
+                        title=f'💬 {user.username}',
+                        body=content[:100],
+                        data={
+                            'type': 'message',
+                            'message_id': msg_id,
+                            'sender_id': user.id,
+                            'tag': f'msg-{msg_id}'
+                        }
+                    )
+                except Exception as push_err:
+                    print(f"[Send] Push error: {push_err}")
 
         return jsonify({'success': True, 'id': msg_id, 'status': 'sent'})
     except Exception as e:

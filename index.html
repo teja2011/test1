@@ -1087,6 +1087,83 @@
             margin: 12px 0;
             border: none;
         }
+
+        /* iOS PWA Modal */
+        .ios-pwa-modal {
+            background: var(--surface);
+            border-radius: 24px;
+            padding: 32px 24px 24px;
+            width: 90%;
+            max-width: 400px;
+            position: relative;
+            text-align: center;
+        }
+        .ios-pwa-close {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 24px;
+            cursor: pointer;
+            padding: 4px 8px;
+        }
+        .ios-pwa-close:hover { color: var(--text); }
+        .ios-pwa-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+        }
+        .ios-pwa-title {
+            font-size: 20px;
+            font-weight: 700;
+            margin-bottom: 12px;
+        }
+        .ios-pwa-text {
+            font-size: 15px;
+            color: var(--text-secondary);
+            margin-bottom: 20px;
+            line-height: 1.5;
+        }
+        .ios-pwa-steps {
+            text-align: left;
+            margin-bottom: 24px;
+        }
+        .ios-pwa-step {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 10px 0;
+            font-size: 14px;
+            color: var(--text-secondary);
+            line-height: 1.4;
+        }
+        .ios-pwa-step-num {
+            flex-shrink: 0;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: var(--primary);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 13px;
+        }
+        .ios-pwa-btn {
+            width: 100%;
+            padding: 14px;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .ios-pwa-btn:hover { background: var(--primary-dark); }
+
         .modal {
             background: var(--surface);
             border-radius: 16px;
@@ -1670,6 +1747,31 @@
                     </div>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- iOS PWA Instruction Modal -->
+    <div id="iosPwaModal" class="modal-overlay" style="display:none; z-index: 10001;">
+        <div class="ios-pwa-modal">
+            <button class="ios-pwa-close" onclick="closeIosPwaModal()">✕</button>
+            <div class="ios-pwa-icon">📱</div>
+            <h3 class="ios-pwa-title">Установите Jetesk на iPhone</h3>
+            <p class="ios-pwa-text">Для полноценной работы push-уведомлений советуем вам добавить Jetesk на экран "Домой":</p>
+            <div class="ios-pwa-steps">
+                <div class="ios-pwa-step">
+                    <span class="ios-pwa-step-num">1</span>
+                    <span>Нажмите кнопку <b>«Поделиться»</b> внизу Safari</span>
+                </div>
+                <div class="ios-pwa-step">
+                    <span class="ios-pwa-step-num">2</span>
+                    <span>Выберите <b>«Ещё»</b></span>
+                </div>
+                <div class="ios-pwa-step">
+                    <span class="ios-pwa-step-num">3</span>
+                    <span>Нажмите <b>«Добавить на экран "Домой"»</b></span>
+                </div>
+            </div>
+            <button class="ios-pwa-btn" onclick="closeIosPwaModal()">Понятно, спасибо!</button>
         </div>
     </div>
 
@@ -4943,6 +5045,10 @@
                     currentUser = result.user;
                     if (result.current_device) currentUser.current_device = result.current_device;
                     showChat();
+                    // Подписываемся на Push после входа
+                    setTimeout(function() { subscribeToPush(); }, 3000);
+                    // Показываем инструкцию для iOS
+                    setTimeout(function() { showIosPwaModal(); }, 5000);
                 } else {
                     errorEl.textContent = result.message || 'Неверный логин или пароль';
                 }
@@ -5874,6 +5980,45 @@
             setTimeout(function() {
                 Notification.requestPermission();
             }, 3000);
+        }
+
+        // Подписываемся на Push-уведомления (для iOS PWA)
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.ready.then(function() {
+                setTimeout(function() {
+                    subscribeToPush();
+                }, 2000);
+            });
+        }
+
+        // ============================================
+        // === iOS PWA Modal ===
+        // ============================================
+
+        function isIOS() {
+            return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+                   (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        }
+
+        function isPWA() {
+            return window.matchMedia('(display-mode: standalone)').matches ||
+                   window.navigator.standalone === true;
+        }
+
+        function showIosPwaModal() {
+            if (!isIOS() || isPWA()) return;
+            // Проверяем не показывали ли уже
+            if (localStorage.getItem('jetesk_ios_pwa_shown')) return;
+            
+            var modal = document.getElementById('iosPwaModal');
+            if (modal) modal.style.display = 'flex';
+        }
+
+        function closeIosPwaModal() {
+            var modal = document.getElementById('iosPwaModal');
+            if (modal) modal.style.display = 'none';
+            // Запоминаем что показывали
+            localStorage.setItem('jetesk_ios_pwa_shown', '1');
         }
 
         // ============================================
