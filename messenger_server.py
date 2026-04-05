@@ -177,6 +177,7 @@ class User(Base):
     avatar_color = Column(String(20), default='6366f1')
     avatar_url = Column(String(500), nullable=True)
     jt_username = Column(String(50), unique=True, nullable=True)
+    bio = Column(String(150), nullable=True, default='')  # Поле "о себе"
     last_seen = Column(DateTime, nullable=True)
 
 class Message(Base):
@@ -378,7 +379,14 @@ def api_me():
     user = get_current_user()
     if user:
         print(f"[API /me] User: id={user.id}, username={user.username}, avatar_url={user.avatar_url}, jt_username={user.jt_username}")
-        return jsonify({'id': user.id, 'username': user.username, 'avatar_color': user.avatar_color or '6366f1', 'avatar_url': user.avatar_url, 'jt_username': user.jt_username})
+        return jsonify({
+            'id': user.id,
+            'username': user.username,
+            'avatar_color': user.avatar_color or '6366f1',
+            'avatar_url': user.avatar_url,
+            'jt_username': user.jt_username,
+            'bio': user.bio or ''
+        })
     print(f"[API /me] No user (cookie: {request.cookies.get('user_id')})")
     return jsonify(None)
 
@@ -893,38 +901,49 @@ def api_keepalive():
     return jsonify({'status': 'ok', 'timestamp': datetime.utcnow().isoformat()})
 
 @app.route('/api/delete-message', methods=['POST'])
-def api_delete_message():
+@app.route('/api/messages/<int:message_id>', methods=['DELETE'])
+def api_delete_message(message_id=None):
     """Удаление сообщения"""
-    user = get_current_user()
-    if not user:
-        return jsonify({'success': False, 'message': 'Not authorized'})
-    
-    data = request.json
-    message_id = data.get('message_id')
-    
-    if not message_id:
-        return jsonify({'success': False, 'message': 'No message_id'})
-    
-    db = get_db()
     try:
-        msg = db.query(Message).filter_by(id=int(message_id)).first()
-        if not msg:
-            return jsonify({'success': False, 'message': 'Message not found'})
-        
-        # Проверяем, что пользователь является автором сообщения
-        if msg.sender_id != user.id:
-            return jsonify({'success': False, 'message': 'Not your message'})
-        
-        db.delete(msg)
-        db.commit()
-        print(f"[delete-message] Message {message_id} deleted by user {user.id}")
-        return jsonify({'success': True})
+        user = get_current_user()
+        if not user:
+            return jsonify({'success': False, 'message': 'Not authorized'}), 401
+
+        # Поддержка двух форматов: POST с JSON и DELETE с параметром в URL
+        if message_id is None:
+            raw_data = request.get_data(as_text=True)
+            try:
+                data = json.loads(raw_data) if raw_data else {}
+            except json.JSONDecodeError:
+                data = {}
+            message_id = data.get('message_id')
+
+        if not message_id:
+            return jsonify({'success': False, 'message': 'No message_id'}), 400
+
+        db = get_db()
+        try:
+            msg = db.query(Message).filter_by(id=int(message_id)).first()
+            if not msg:
+                return jsonify({'success': False, 'message': 'Message not found'}), 404
+
+            # Проверяем, что пользователь является автором сообщения
+            if msg.sender_id != user.id:
+                return jsonify({'success': False, 'message': 'Not your message'}), 403
+
+            db.delete(msg)
+            db.commit()
+            print(f"[delete-message] Message {message_id} deleted by user {user.id}")
+            return jsonify({'success': True})
+        except Exception as e:
+            db.rollback()
+            print(f"[delete-message] Error: {e}")
+            return jsonify({'success': False, 'message': str(e)}), 500
+        finally:
+            db.close()
     except Exception as e:
-        db.rollback()
-        print(f"[delete-message] Error: {e}")
-        return jsonify({'success': False, 'message': str(e)})
-    finally:
-        db.close()
+        print(f"[delete-message] Unexpected error: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
 
 @app.route('/api/settings/clear-messages', methods=['POST'])
 def api_clear_messages():
@@ -937,51 +956,6 @@ def api_clear_messages():
         db.query(Message).filter(Message.sender_id == user.id).delete()
         db.commit()
         return jsonify({'success': True})
-    except Exception as e:
-        db.rollback()
-        return jsonify({'success': False, 'message': str(e)})
-    finally:
-        db.close()
-
-@app.route('/api/settings/delete-account', methods=['POST'])
-def api_delete_account():
-    """Удаляет аккаунт текущего пользователя и все связанные данные"""
-    user = get_current_user()
-    if not user:
-        return jsonify({'success': False, 'message': 'Not authorized'})
-    db = get_db()
-    try:
-        user_id = user.id
-
-        # 1. Удаляем push-подписки
-        db.query(PushSubscription).filter(PushSubscription.user_id == user_id).delete()
-
-        # 2. Удаляем устройства
-        db.query(Device).filter(Device.user_id == user_id).delete()
-
-        # 3. Удаляем звонки (как инициатор или получатель)
-        db.query(Call).filter(
-            or_(Call.caller_id == user_id, Call.callee_id == user_id)
-        ).delete()
-
-        # 4. Удаляем уведомления
-        db.query(Notification).filter(
-            or_(Notification.user_id == user_id, Notification.sender_id == user_id)
-        ).delete()
-
-        # 5. Удаляем все сообщения (как отправленные, так и полученные)
-        db.query(Message).filter(
-            or_(Message.sender_id == user_id, Message.recipient_id == user_id)
-        ).delete()
-
-        # 6. Удаляем пользователя
-        db.query(User).filter(User.id == user_id).delete()
-
-        db.commit()
-        resp = make_response(jsonify({'success': True}))
-        resp.delete_cookie('user_id')
-        resp.delete_cookie('username')  # На всякий
-        return resp
     except Exception as e:
         db.rollback()
         return jsonify({'success': False, 'message': str(e)})
@@ -1064,6 +1038,25 @@ def api_notifications_mark_single_read(notification_id):
         return jsonify({'success': False, 'message': str(e)})
     finally:
         db.close()
+
+@app.route('/api/settings/change-bio', methods=['POST'])
+def api_change_bio():
+    """Изменить поле 'о себе'"""
+    try:
+        user = get_current_user()
+        if not user:
+            return jsonify({'success': False, 'message': 'Not authorized'}), 401
+        data = request.get_json(silent=True)
+        if not data:
+            return jsonify({'success': False, 'message': 'Invalid data'}), 400
+        bio = data.get('bio', '').strip()[:150]
+        user.bio = bio
+        db = get_db()
+        db.commit()
+        db.close()
+        return jsonify({'success': True, 'bio': bio})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
 
 @app.route('/api/settings/change-username', methods=['POST'])
 def api_change_username():
@@ -1246,7 +1239,7 @@ def api_mark_read():
         db.close()
 
 @app.route('/api/settings/delete-account', methods=['POST'])
-def api_delete_user_account():
+def api_delete_account():
     """Удалить аккаунт и все связанные данные из ВСЕХ таблиц"""
     user = get_current_user()
     if not user:
