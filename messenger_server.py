@@ -429,7 +429,27 @@ def api_register():
         avatar_file = request.files.get('avatar_file')
         avatar_data = request.form.get('avatar_data')
     else:
-        data = request.json
+        # Универсальный парсинг JSON
+        data = None
+        try:
+            raw = request.get_data()
+            if raw:
+                if isinstance(raw, bytes):
+                    raw_str = raw.decode('utf-8')
+                else:
+                    raw_str = str(raw)
+                if raw_str.strip():
+                    import json
+                    data = json.loads(raw_str)
+        except:
+            pass
+        if not data:
+            data = request.get_json(silent=True)
+        if not data:
+            data = request.get_json(force=True, silent=True)
+        if not data:
+            data = {}
+            
         name = data.get('name', data.get('username', '')).strip()
         username = data.get('username', '').strip()
         password = data.get('password', '')
@@ -517,13 +537,27 @@ def api_register():
 
 @app.route('/api/login', methods=['POST'])
 def api_login():
-    data = request.get_json(force=True, silent=True)
+    # Универсальный парсинг тела (для Vercel/Serverless)
+    data = None
+    try:
+        raw = request.get_data()
+        if raw:
+            if isinstance(raw, bytes):
+                raw_str = raw.decode('utf-8')
+            else:
+                raw_str = str(raw)
+            if raw_str.strip():
+                import json
+                data = json.loads(raw_str)
+    except:
+        pass
+    
     if not data:
-        try:
-            import json
-            data = json.loads(request.data.decode('utf-8'))
-        except:
-            data = {}
+        data = request.get_json(silent=True)
+    if not data:
+        data = request.get_json(force=True, silent=True)
+    if not data:
+        data = {}
             
     username = data.get('username', '').strip()
     password = data.get('password', '')
@@ -732,16 +766,30 @@ def api_send():
     user = get_current_user()
     if not user:
         return jsonify({'success': False, 'message': 'Not authorized'})
+
+    # Универсальный парсинг тела (для Vercel/Serverless)
+    data = None
+    try:
+        raw = request.get_data()
+        if raw:
+            if isinstance(raw, bytes):
+                raw_str = raw.decode('utf-8')
+            else:
+                raw_str = str(raw)
+            if raw_str.strip():
+                import json
+                data = json.loads(raw_str)
+    except:
+        pass
     
-    data = request.get_json(force=True, silent=True)
     if not data:
-        try:
-            import json
-            data = json.loads(request.data.decode('utf-8'))
-        except:
-            pass
-            
-    if not data or 'content' not in data:
+        data = request.get_json(silent=True)
+    if not data:
+        data = request.get_json(force=True, silent=True)
+    if not data:
+        data = {'content': request.form.get('content', ''), 'recipient_id': request.form.get('recipient_id')}
+
+    if not data or not data.get('content', '').strip():
         return jsonify({'success': False, 'message': 'Invalid request format'}), 400
     content = data.get('content', '').strip()
     recipient_id = data.get('recipient_id')
@@ -1093,27 +1141,58 @@ def api_change_bio():
         if not user:
             return jsonify({'success': False, 'message': 'Not authorized'}), 401
         
-        data = request.get_json(force=True, silent=True)
+        import json
+        
+        # Пробуем все варианты получения данных
+        data = None
+        
+        # 1. Прямой парсинг сырых данных
+        try:
+            raw = request.get_data()
+            if raw:
+                if isinstance(raw, bytes):
+                    raw_str = raw.decode('utf-8')
+                else:
+                    raw_str = str(raw)
+                if raw_str.strip():
+                    data = json.loads(raw_str)
+                    print(f"[change-bio] Parsed from raw: {data}")
+        except Exception as e:
+            print(f"[change-bio] Raw parse failed: {e}")
+        
+        # 2. Через Flask force=True
         if not data:
             try:
-                import json
-                data = json.loads(request.data.decode('utf-8'))
+                data = request.get_json(force=True)
+                if data:
+                    print(f"[change-bio] Parsed via force=True: {data}")
             except:
-                data = {}
-                
-        if not data or 'bio' not in data:
-            return jsonify({'success': False, 'message': 'Invalid data: bio field required'}), 400
+                pass
         
-        bio = str(data.get('bio', '')).strip()[:150]
+        # 3. Через Flask silent=True
+        if not data:
+            data = request.get_json(silent=True)
+            if data:
+                print(f"[change-bio] Parsed via silent: {data}")
+        
+        # 4. Form data
+        if not data:
+            bio_val = request.form.get('bio', request.form.get('text', ''))
+            if bio_val is not None:
+                data = {'bio': bio_val}
+                print(f"[change-bio] From form: {data}")
+        
+        if not data:
+            return jsonify({'success': False, 'message': 'No data received. Send JSON body with "bio" field.'}), 400
+        
+        bio = str(data.get('bio') or data.get('text', '')).strip()[:150]
         
         db = get_db()
         try:
-            # Пробуем через SQLAlchemy
             db.execute(text("UPDATE users SET bio = :bio WHERE id = :uid"), {'bio': bio, 'uid': user.id})
             db.commit()
         except Exception as col_err:
             db.rollback()
-            # Колонки bio нет — создаём её
             if 'bio' in str(col_err).lower() or 'column' in str(col_err).lower():
                 db.execute(text("ALTER TABLE users ADD COLUMN bio VARCHAR(150) DEFAULT ''"))
                 db.commit()
@@ -1124,6 +1203,8 @@ def api_change_bio():
         db.close()
         return jsonify({'success': True, 'bio': bio})
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({'success': False, 'message': str(e)}), 500
 
 @app.route('/api/settings/change-username', methods=['POST'])
@@ -1797,7 +1878,17 @@ def api_call_offer():
         if not user_id:
             return jsonify({'success': False, 'message': 'Not authorized'}), 401
 
-        data = request.get_json()
+        data = request.get_json(silent=True)
+        if not data:
+            try:
+                raw = request.get_data()
+                if raw:
+                    data = json.loads(raw.decode('utf-8'))
+            except:
+                pass
+        if not data:
+            return jsonify({'success': False, 'message': 'Invalid request'}), 400
+            
         call_id = data.get('call_id')
         to_user_id = data.get('to_user_id')
         offer = data.get('offer')
@@ -1903,7 +1994,17 @@ def api_call_ice():
         if not user_id:
             return jsonify({'success': False, 'message': 'Not authorized'}), 401
 
-        data = request.get_json()
+        data = request.get_json(silent=True)
+        if not data:
+            try:
+                raw = request.get_data()
+                if raw:
+                    data = json.loads(raw.decode('utf-8'))
+            except:
+                pass
+        if not data:
+            return jsonify({'success': False, 'message': 'Invalid request'}), 400
+            
         call_id = data.get('call_id')
         candidate = data.get('candidate')
 
@@ -1970,7 +2071,17 @@ def api_call_accept():
     """Принять звонок"""
     db = get_db()
     try:
-        data = request.get_json()
+        data = request.get_json(silent=True)
+        if not data:
+            try:
+                raw = request.get_data()
+                if raw:
+                    data = json.loads(raw.decode('utf-8'))
+            except:
+                pass
+        if not data:
+            return jsonify({'success': False, 'message': 'Invalid request'}), 400
+            
         call_id = data.get('call_id')
 
         call = db.query(Call).filter_by(call_id=call_id).first()
@@ -1999,7 +2110,17 @@ def api_call_answer():
     import json
     db = get_db()
     try:
-        data = request.get_json()
+        data = request.get_json(silent=True)
+        if not data:
+            try:
+                raw = request.get_data()
+                if raw:
+                    data = json.loads(raw.decode('utf-8'))
+            except:
+                pass
+        if not data:
+            return jsonify({'success': False, 'message': 'Invalid request'}), 400
+            
         call_id = data.get('call_id')
         answer = data.get('answer')
 
@@ -2028,7 +2149,17 @@ def api_call_reject():
     import json
     db = get_db()
     try:
-        data = request.get_json()
+        data = request.get_json(silent=True)
+        if not data:
+            try:
+                raw = request.get_data()
+                if raw:
+                    data = json.loads(raw.decode('utf-8'))
+            except:
+                pass
+        if not data:
+            return jsonify({'success': False, 'message': 'Invalid request'}), 400
+            
         call_id = data.get('call_id')
 
         call = db.query(Call).filter_by(call_id=call_id).first()
@@ -2094,7 +2225,17 @@ def api_call_end():
     from datetime import datetime
     db = get_db()
     try:
-        data = request.get_json()
+        data = request.get_json(silent=True)
+        if not data:
+            try:
+                raw = request.get_data()
+                if raw:
+                    data = json.loads(raw.decode('utf-8'))
+            except:
+                pass
+        if not data:
+            return jsonify({'success': False, 'message': 'Invalid request'}), 400
+            
         call_id = data.get('call_id')
 
         call = db.query(Call).filter_by(call_id=call_id).first()
