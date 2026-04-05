@@ -893,33 +893,28 @@ def api_keepalive():
     return jsonify({'status': 'ok', 'timestamp': datetime.utcnow().isoformat()})
 
 @app.route('/api/delete-message', methods=['POST'])
-@app.route('/api/messages/<int:message_id>', methods=['DELETE'])
-def api_delete_message(message_id=None):
+def api_delete_message():
     """Удаление сообщения"""
     user = get_current_user()
     if not user:
         return jsonify({'success': False, 'message': 'Not authorized'})
-
-    # Поддержка двух форматов: POST с JSON и DELETE с параметром в URL
-    if message_id is None:
-        data = request.get_json(silent=True)
-        if not data:
-            return jsonify({'success': False, 'message': 'Invalid request'})
-        message_id = data.get('message_id')
-
+    
+    data = request.json
+    message_id = data.get('message_id')
+    
     if not message_id:
         return jsonify({'success': False, 'message': 'No message_id'})
-
+    
     db = get_db()
     try:
         msg = db.query(Message).filter_by(id=int(message_id)).first()
         if not msg:
             return jsonify({'success': False, 'message': 'Message not found'})
-
+        
         # Проверяем, что пользователь является автором сообщения
         if msg.sender_id != user.id:
             return jsonify({'success': False, 'message': 'Not your message'})
-
+        
         db.delete(msg)
         db.commit()
         print(f"[delete-message] Message {message_id} deleted by user {user.id}")
@@ -1315,105 +1310,79 @@ def api_delete_user_account():
 @app.route('/api/username/check', methods=['POST'])
 def api_username_check():
     """Проверка доступности username"""
+    data = request.json
+    username = data.get('username', '').strip()
+    
+    if not username:
+        return jsonify({'available': False, 'message': 'Введите username'})
+    
+    db = get_db()
     try:
-        data = request.get_json(silent=True)
-        if not data:
-            return jsonify({'available': False, 'message': 'Invalid request data'})
-        
-        username = data.get('username', '').strip()
-
-        if not username:
-            return jsonify({'available': False, 'message': 'Введите username'})
-
-        db = get_db()
-        try:
-            existing = db.query(User).filter_by(username=username).first()
-            if existing:
-                return jsonify({'available': False, 'message': 'Это имя уже занято'})
-            return jsonify({'available': True})
-        except Exception as e:
-            print(f"Error checking username: {e}")
-            return jsonify({'available': False, 'message': str(e)})
-        finally:
-            db.close()
+        existing = db.query(User).filter_by(username=username).first()
+        if existing:
+            return jsonify({'available': False, 'message': 'Это имя уже занято'})
+        return jsonify({'available': True})
     except Exception as e:
-        print(f"Unexpected error in api_username_check: {e}")
+        print(f"Error checking username: {e}")
         return jsonify({'available': False, 'message': str(e)})
+    finally:
+        db.close()
 
 @app.route('/api/username/set', methods=['POST'])
 def api_username_set():
     """Установка @username для пользователя"""
+    user_id = request.cookies.get('user_id')
+    if not user_id:
+        return jsonify({'success': False, 'message': 'Not authorized'})
+
+    data = request.json
+    jt_username = data.get('jt_username', '').strip()
+
+    # Удаляем @ в начале если есть
+    if jt_username.startswith('@'):
+        jt_username = jt_username[1:]
+
+    # Создаём сессию СРАЗУ и используем её для всего
+    db = get_db()
     try:
-        print(f"[username/set] Request received")
-        print(f"[username/set] Cookies: user_id={request.cookies.get('user_id')}")
-        print(f"[username/set] Content-Type: {request.content_type}")
-        print(f"[username/set] Raw data: {request.get_data(as_text=True)}")
-        
-        user_id = request.cookies.get('user_id')
-        if not user_id:
-            print(f"[username/set] Not authorized")
-            return jsonify({'success': False, 'message': 'Not authorized'})
+        # Получаем пользователя в рамках этой сессии
+        user = db.query(User).filter_by(id=int(user_id)).first()
+        if not user:
+            return jsonify({'success': False, 'message': 'User not found'})
 
-        data = request.get_json(silent=True)
-        if not data:
-            print(f"[username/set] Invalid JSON data")
-            return jsonify({'success': False, 'message': 'Invalid request data'})
-        
-        jt_username = data.get('jt_username', '').strip()
-        print(f"[username/set] jt_username: '{jt_username}'")
-
-        # Удаляем @ в начале если есть
-        if jt_username.startswith('@'):
-            jt_username = jt_username[1:]
-
-        # Создаём сессию СРАЗУ и используем её для всего
-        db = get_db()
-        try:
-            # Получаем пользователя в рамках этой сессии
-            user = db.query(User).filter_by(id=int(user_id)).first()
-            if not user:
-                return jsonify({'success': False, 'message': 'User not found'})
-
-            if not jt_username:
-                # Пустой - удаляем
-                user.jt_username = None
-                db.commit()
-                return jsonify({'success': True, 'jt_username': None})
-
-            # Проверка валидности: 5-32 символа, латиница, цифры, точки, подчёркивания
-            import re
-            if not re.match(r'^[a-zA-Z][a-zA-Z0-9_.]{4,31}$', jt_username):
-                return jsonify({'success': False, 'message': 'Неверный формат. 5-32 символа, начинается с буквы (a-z), латиница, цифры, точки и подчёркивания'})
-
-            # Проверяем что нет подряд идущих точек или подчёркиваний
-            if '..' in jt_username or '__' in jt_username:
-                return jsonify({'success': False, 'message': 'Username не может содержать подряд идущие точки или подчёркивания'})
-
-            # Проверяем что не заканчивается на точку или подчёркивание
-            if jt_username.endswith('.') or jt_username.endswith('_'):
-                return jsonify({'success': False, 'message': 'Username не может заканчиваться на точку или подчёркивание'})
-
-            # Проверяем, не занято ли
-            existing = db.query(User).filter_by(jt_username=jt_username).first()
-            if existing and existing.id != user.id:
-                return jsonify({'success': False, 'message': 'Этот @username уже занят'})
-
-            user.jt_username = jt_username
+        if not jt_username:
+            # Пустой - удаляем
+            user.jt_username = None
             db.commit()
-            return jsonify({'success': True, 'jt_username': jt_username})
-        except Exception as e:
-            db.rollback()
-            print(f"Error setting username: {e}")
-            import traceback
-            traceback.print_exc()
-            return jsonify({'success': False, 'message': str(e)})
-        finally:
-            db.close()
+            return jsonify({'success': True, 'jt_username': None})
+
+        # Проверка валидности: 5-32 символа, латиница, цифры, точки, подчёркивания
+        import re
+        if not re.match(r'^[a-zA-Z][a-zA-Z0-9_.]{4,31}$', jt_username):
+            return jsonify({'success': False, 'message': 'Неверный формат. 5-32 символа, начинается с буквы (a-z), латиница, цифры, точки и подчёркивания'})
+
+        # Проверяем что нет подряд идущих точек или подчёркиваний
+        if '..' in jt_username or '__' in jt_username:
+            return jsonify({'success': False, 'message': 'Username не может содержать подряд идущие точки или подчёркивания'})
+
+        # Проверяем что не заканчивается на точку или подчёркивание
+        if jt_username.endswith('.') or jt_username.endswith('_'):
+            return jsonify({'success': False, 'message': 'Username не может заканчиваться на точку или подчёркивание'})
+
+        # Проверяем, не занято ли
+        existing = db.query(User).filter_by(jt_username=jt_username).first()
+        if existing and existing.id != user.id:
+            return jsonify({'success': False, 'message': 'Этот @username уже занят'})
+
+        user.jt_username = jt_username
+        db.commit()
+        return jsonify({'success': True, 'jt_username': jt_username})
     except Exception as e:
-        print(f"Unexpected error in api_username_set: {e}")
-        import traceback
-        traceback.print_exc()
+        db.rollback()
+        print(f"Error setting username: {e}")
         return jsonify({'success': False, 'message': str(e)})
+    finally:
+        db.close()
 
 @app.route('/api/upload-avatar', methods=['POST'])
 def api_upload_avatar():
