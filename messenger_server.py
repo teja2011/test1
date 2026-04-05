@@ -345,10 +345,7 @@ def get_current_user():
         print(f"Error getting current user: {e}")
         return None
 
-@app.before_request
-def before_request():
-    """Гарантировать что таблицы существуют перед каждым запросом (для serverless)"""
-    ensure_tables()
+# before_request убран — таблицы создаются один раз при старте
 
 def generate_avatar_color():
     import random
@@ -1765,10 +1762,10 @@ def api_call_offer():
 
         db.commit()
 
-        # Отправляем push-уведомление получателю
-        caller = db.query(User).filter_by(id=int(user_id)).first()
-        caller_name = caller.username if caller else 'Неизвестный'
+        # Push-уведомление — не критично, не должно ронять звонок
         try:
+            caller = db.query(User).filter_by(id=int(user_id)).first()
+            caller_name = caller.username if caller else 'Неизвестный'
             send_push_notification(
                 user_id=int(to_user_id),
                 title='📞 Входящий звонок',
@@ -1782,7 +1779,7 @@ def api_call_offer():
                 }
             )
         except Exception as e:
-            print(f"[Call/Offer] Push error: {e}")
+            print(f"[Call/Offer] Push error (ignored): {e}")
 
         return jsonify({'success': True})
     except Exception as e:
