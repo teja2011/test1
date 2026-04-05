@@ -202,6 +202,30 @@
             padding: 10px;
             -webkit-overflow-scrolling: touch;
             min-height: 0;
+            touch-action: pan-y;
+        }
+        .pull-refresh-indicator {
+            display: none;
+            align-items: center;
+            justify-content: center;
+            height: 50px;
+            color: var(--text-secondary);
+            font-size: 13px;
+            gap: 8px;
+        }
+        .pull-refresh-indicator.visible {
+            display: flex;
+        }
+        .pull-refresh-spinner {
+            width: 20px;
+            height: 20px;
+            border: 2px solid var(--border);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
         }
         .users-footer {
             padding: 16px 12px;
@@ -402,13 +426,18 @@
             min-height: 0;
         }
         .chat-header {
-            padding: 12px 16px;
+            padding: 14px 16px;
             background: var(--surface);
             border-bottom: 1px solid var(--border);
             display: flex;
             align-items: center;
             gap: 12px;
             flex-shrink: 0;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .chat-header:hover {
+            background: var(--bg);
         }
         .back-btn {
             display: none;
@@ -425,21 +454,21 @@
         }
         .chat-title {
             font-weight: 600;
-            font-size: 16px;
+            font-size: 17px;
             flex: 1;
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 12px;
         }
         .chat-title-avatar {
-            width: 36px;
-            height: 36px;
+            width: 42px;
+            height: 42px;
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
             font-weight: 700;
-            font-size: 16px;
+            font-size: 18px;
             color: white;
             flex-shrink: 0;
             background-size: cover;
@@ -1019,6 +1048,160 @@
             width: 90%;
             max-width: 450px;
         }
+        /* Profile Modal Styles */
+        .profile-modal {
+            background: var(--bg);
+            border-radius: 0;
+            width: 100%;
+            height: 100%;
+            max-width: 100%;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+        }
+        .profile-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px;
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+        }
+        .profile-back-btn {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            background: none;
+            border: none;
+            color: var(--primary);
+            font-size: 16px;
+            cursor: pointer;
+            padding: 8px;
+        }
+        .profile-edit-btn {
+            background: none;
+            border: none;
+            color: var(--primary);
+            font-size: 16px;
+            cursor: pointer;
+            padding: 8px;
+        }
+        .profile-content {
+            flex: 1;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .profile-avatar-section {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+        .profile-avatar {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            background: var(--primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 40px;
+            font-weight: 700;
+            color: white;
+            margin-bottom: 16px;
+        }
+        .profile-name {
+            font-size: 22px;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+        .profile-status {
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+        .profile-actions {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 24px;
+            width: 100%;
+            max-width: 400px;
+        }
+        .profile-action-btn {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            padding: 16px 8px;
+            background: var(--surface);
+            border-radius: 12px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .profile-action-btn:hover {
+            background: var(--bg);
+        }
+        .profile-action-btn svg {
+            width: 24px;
+            height: 24px;
+            fill: var(--primary);
+        }
+        .profile-action-btn span {
+            font-size: 12px;
+            color: var(--primary);
+        }
+        .profile-info-card {
+            width: 100%;
+            max-width: 400px;
+            background: var(--surface);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        .profile-info-item {
+            padding: 16px;
+        }
+        .profile-info-label {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-bottom: 4px;
+        }
+        .profile-info-value {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 16px;
+            color: var(--primary);
+        }
+        .profile-divider {
+            height: 1px;
+            background: var(--border);
+            margin: 0 16px;
+        }
+        .profile-bio-edit {
+            width: 100%;
+            min-height: 80px;
+            padding: 12px;
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            font-size: 14px;
+            background: var(--bg);
+            color: var(--text);
+            font-family: inherit;
+            resize: vertical;
+            margin-top: 8px;
+        }
+        .profile-bio-edit:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+        .profile-bio-counter {
+            font-size: 12px;
+            color: var(--text-secondary);
+            text-align: right;
+            margin-top: 4px;
+        }
         .modal-title { font-size: 20px; font-weight: 700; margin-bottom: 8px; text-align: center; }
         .modal-subtitle { font-size: 14px; color: var(--text-secondary); text-align: center; margin-bottom: 20px; }
         .modal-input {
@@ -1404,6 +1587,10 @@
                                oninput="filterUsers()">
                     </div>
                     <div class="users-list" id="usersList">
+                        <div class="pull-refresh-indicator" id="pullRefreshIndicator">
+                            <div class="pull-refresh-spinner"></div>
+                            <span>Обновление...</span>
+                        </div>
                     </div>
                 </aside>
 
@@ -1548,6 +1735,71 @@
                     <path d="M12 16L6 10H18L12 16Z"/>
                 </svg>
             </button>
+        </div>
+    </div>
+
+    <!-- Profile Modal -->
+    <div id="profileModal" class="modal-overlay">
+        <div class="profile-modal">
+            <div class="profile-header">
+                <button class="profile-back-btn" onclick="closeProfileModal()">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M15 18l-6-6 6-6"/>
+                    </svg>
+                    Назад
+                </button>
+                <button class="profile-edit-btn" id="profileEditBtn" onclick="toggleProfileEdit()">Изм.</button>
+            </div>
+            <div class="profile-content">
+                <div class="profile-avatar-section">
+                    <div class="profile-avatar" id="profileAvatar">
+                        <span id="profileAvatarLetter">A</span>
+                        <img id="profileAvatarImg" style="display:none; width:100%; height:100%; border-radius:50%; object-fit:cover;" />
+                    </div>
+                    <div class="profile-name" id="profileName">Username</div>
+                    <div class="profile-status" id="profileStatus">был(а) недавно</div>
+                </div>
+                
+                <div class="profile-actions">
+                    <div class="profile-action-btn" onclick="closeProfileModal()">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>
+                        <span>чат</span>
+                    </div>
+                    <div class="profile-action-btn" style="display:none;" id="profileCallBtn">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>
+                        <span>звонок</span>
+                    </div>
+                    <div class="profile-action-btn" style="display:none;" id="profileSoundBtn">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.89 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>
+                        <span>звук</span>
+                    </div>
+                    <div class="profile-action-btn">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+                        <span>ещё</span>
+                    </div>
+                </div>
+                
+                <div class="profile-info-card">
+                    <div class="profile-info-item">
+                        <div class="profile-info-label">имя пользователя</div>
+                        <div class="profile-info-value" id="profileJtUsername">
+                            <span>@username</span>
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style="opacity:0.5;">
+                                <path d="M4 8h4V4H4v4zm6 12h4v-4h-4v4zm-6 0h4v-4H4v4zm0-6h4v-4H4v4zm6 0h4v-4h-4v4zm6-10v4h4V4h-4zm-6 4h4V4h-4v4zm6 6h4v-4h-4v4zm0 6h4v-4h-4v4z"/>
+                            </svg>
+                        </div>
+                    </div>
+                    <div class="profile-divider"></div>
+                    <div class="profile-info-item" id="profileBioSection">
+                        <div class="profile-info-label">о себе</div>
+                        <div class="profile-info-value" id="profileBio">
+                            <span>Не указано</span>
+                        </div>
+                        <textarea class="profile-bio-edit" id="profileBioEdit" style="display:none;" maxlength="150" placeholder="Расскажите о себе..."></textarea>
+                        <div class="profile-bio-counter" id="profileBioCounter" style="display:none;">0/150</div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -2364,6 +2616,16 @@
             var avatarEl = document.getElementById('chatTitleAvatar');
             var statusEl = document.getElementById('chatTitleStatus');
             var nameEl = document.getElementById('chatTitleName');
+            var headerEl = document.querySelector('.chat-header');
+
+            // Обработчик клика на header для открытия профиля
+            if (headerEl) {
+                headerEl.onclick = function() {
+                    if (selectedUserId > 0) {
+                        openProfileModal(selectedUserId);
+                    }
+                };
+            }
 
             if (selectedUserId === 0) {
                 if (nameEl) nameEl.textContent = 'Общий чат';
@@ -2416,6 +2678,113 @@
                     statusEl.textContent = 'Не в сети';
                     statusEl.className = 'chat-title-status';
                 }
+            }
+        }
+
+        // Profile Modal Functions
+        function openProfileModal(userId) {
+            var targetUser = null;
+            for (var i = 0; i < users.length; i++) {
+                if (users[i].id === userId) {
+                    targetUser = users[i];
+                    break;
+                }
+            }
+            if (!targetUser) return;
+
+            // Заполняем данные профиля
+            var avatar = document.getElementById('profileAvatar');
+            var avatarLetter = document.getElementById('profileAvatarLetter');
+            var avatarImg = document.getElementById('profileAvatarImg');
+            var name = document.getElementById('profileName');
+            var status = document.getElementById('profileStatus');
+            var jtUsername = document.getElementById('profileJtUsername');
+            var bio = document.getElementById('profileBio');
+
+            if (avatar) {
+                if (targetUser.avatar_url) {
+                    avatarImg.src = targetUser.avatar_url;
+                    avatarImg.style.display = 'block';
+                    avatarLetter.style.display = 'none';
+                } else {
+                    avatarImg.style.display = 'none';
+                    avatarLetter.style.display = 'block';
+                    avatarLetter.textContent = (targetUser.username || '').charAt(0).toUpperCase();
+                    avatar.style.background = '#' + (targetUser.avatar_color || '6366f1');
+                }
+            }
+
+            if (name) name.textContent = targetUser.username || '';
+            if (status) {
+                if (targetUser.online || targetUser.is_online) {
+                    status.textContent = 'В сети';
+                } else if (targetUser.last_seen) {
+                    status.textContent = 'Был(а) ' + targetUser.last_seen;
+                } else {
+                    status.textContent = 'Не в сети';
+                }
+            }
+
+            if (jtUsername) {
+                jtUsername.querySelector('span').textContent = targetUser.jt_username ? '@' + targetUser.jt_username : 'Не указано';
+            }
+
+            if (bio) {
+                bio.querySelector('span').textContent = targetUser.bio || 'Не указано';
+            }
+
+            // Скрываем элементы редактирования для чужих профилей
+            var isOwnProfile = currentUser && currentUser.id === userId;
+            document.getElementById('profileEditBtn').style.display = isOwnProfile ? 'block' : 'none';
+            document.getElementById('profileBioEdit').style.display = 'none';
+            document.getElementById('profileBioCounter').style.display = 'none';
+
+            document.getElementById('profileModal').classList.add('show');
+        }
+
+        function closeProfileModal() {
+            document.getElementById('profileModal').classList.remove('show');
+        }
+
+        var isProfileEditing = false;
+
+        function toggleProfileEdit() {
+            isProfileEditing = !isProfileEditing;
+            var bioEdit = document.getElementById('profileBioEdit');
+            var bioDisplay = document.getElementById('profileBio');
+            var counter = document.getElementById('profileBioCounter');
+            var editBtn = document.getElementById('profileEditBtn');
+
+            if (isProfileEditing) {
+                bioEdit.style.display = 'block';
+                bioDisplay.style.display = 'none';
+                counter.style.display = 'block';
+                editBtn.textContent = 'Готово';
+                bioEdit.value = (currentUser && currentUser.bio) ? currentUser.bio : '';
+                counter.textContent = bioEdit.value.length + '/150';
+            } else {
+                // Сохраняем bio
+                var newBio = bioEdit.value.trim();
+                apiFetch('/api/settings/change-bio', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({bio: newBio})
+                }).then(function(r) {
+                    return r.json();
+                }).then(function(result) {
+                    if (result.success) {
+                        if (currentUser) currentUser.bio = result.bio;
+                        bioDisplay.querySelector('span').textContent = result.bio || 'Не указано';
+                    }
+                }).catch(function(err) {
+                    console.error('Error saving bio:', err);
+                    alert('Ошибка сохранения: ' + err.message);
+                });
+
+                bioEdit.style.display = 'none';
+                bioDisplay.style.display = 'flex';
+                counter.style.display = 'none';
+                editBtn.textContent = 'Изм.';
             }
         }
 
@@ -2768,7 +3137,108 @@
                     }
                 });
             }
+            
+            // Pull-to-refresh для списка контактов
+            initUsersPullRefresh();
+            
+            // Счетчик символов для bio
+            var bioEdit = document.getElementById('profileBioEdit');
+            var bioCounter = document.getElementById('profileBioCounter');
+            if (bioEdit && bioCounter) {
+                bioEdit.addEventListener('input', function() {
+                    bioCounter.textContent = bioEdit.value.length + '/150';
+                });
+            }
         });
+        
+        // Pull-to-refresh для контактов
+        var pullRefreshStartY = 0;
+        var pullRefreshDragging = false;
+        var pullRefreshThreshold = 80;
+        
+        function initUsersPullRefresh() {
+            var usersList = document.getElementById('usersList');
+            if (!usersList) return;
+            
+            var indicator = document.getElementById('pullRefreshIndicator');
+            var startY = 0;
+            var dragging = false;
+            
+            // Touch события
+            usersList.addEventListener('touchstart', function(e) {
+                if (usersList.scrollTop === 0) {
+                    startY = e.touches[0].clientY;
+                    dragging = true;
+                }
+            }, { passive: true });
+            
+            usersList.addEventListener('touchmove', function(e) {
+                if (!dragging) return;
+                
+                var currentY = e.touches[0].clientY;
+                var diff = currentY - startY;
+                
+                if (diff > 0 && diff <= pullRefreshThreshold * 2) {
+                    // Показываем индикатор при свайпе вниз
+                    if (diff > 20) {
+                        indicator.classList.add('visible');
+                        var opacity = Math.min(1, diff / pullRefreshThreshold);
+                        indicator.style.opacity = opacity;
+                    }
+                }
+            }, { passive: true });
+            
+            usersList.addEventListener('touchend', function(e) {
+                if (!dragging) return;
+                dragging = false;
+                
+                var endY = e.changedTouches[0].clientY;
+                var diff = endY - startY;
+                
+                if (diff > pullRefreshThreshold) {
+                    // Порог превышен - обновляем
+                    refreshUsersList();
+                } else {
+                    indicator.classList.remove('visible');
+                }
+            }, { passive: true });
+        }
+        
+        function refreshUsersList() {
+            var indicator = document.getElementById('pullRefreshIndicator');
+            indicator.classList.add('visible');
+            indicator.style.opacity = 1;
+            
+            // Загружаем пользователей и онлайн статус
+            Promise.all([
+                loadUsers(),
+                loadCurrentUserInfo()
+            ]).then(function() {
+                // Обновляем отображение сообщений
+                loadLastMessages();
+                
+                // Небольшая задержка для плавности
+                setTimeout(function() {
+                    indicator.classList.remove('visible');
+                }, 500);
+            }).catch(function(err) {
+                console.error('Error refreshing users:', err);
+                setTimeout(function() {
+                    indicator.classList.remove('visible');
+                }, 500);
+            });
+        }
+        
+        function loadCurrentUserInfo() {
+            return apiFetch('/api/me')
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (data && data.id) {
+                        // Обновляем currentUser с bio
+                        currentUser = Object.assign(currentUser || {}, data);
+                    }
+                });
+        }
 
         function getStatusIcon(status) {
             if (status === 'read' || status === 'delivered') return ' ✓✓';
@@ -4198,9 +4668,15 @@
             })
             .then(function(result) {
                 if (result.success) {
-                    document.cookie = 'username=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+                    // Обновляем currentUser без перезагрузки
+                    if (currentUser) {
+                        currentUser.username = result.username;
+                    }
+                    // Обновляем все отображения ника
+                    updateCurrentUserDisplay();
+                    // Закрываем модалку
+                    closeSettingsModal();
                     alert('Ник изменён на: ' + result.username);
-                    location.reload();
                 } else {
                     alert('Ошибка: ' + (result.message || 'Неизвестная ошибка'));
                 }
@@ -4213,6 +4689,23 @@
                 console.error('Ошибка смены ника:', err);
                 alert('Ошибка: ' + err.message);
             });
+        }
+        
+        function updateCurrentUserDisplay() {
+            if (!currentUser) return;
+            
+            // Обновляем ник в шапке чата (если открыт общий чат)
+            var chatTitle = document.getElementById('chatTitle');
+            if (chatTitle && selectedUserId === 0) {
+                chatTitle.textContent = 'Общий чат';
+            }
+            
+            // Обновляем ник в списке контактов (текущий пользователь не отображается там)
+            // Но обновим в settings если открыта
+            var settingsName = document.getElementById('settingsCurrentUsername');
+            if (settingsName) {
+                settingsName.textContent = currentUser.username;
+            }
         }
 
         function updateSettingsJtUsernameStatus(message, isError) {
