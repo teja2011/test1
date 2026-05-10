@@ -25,7 +25,7 @@
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
         :root {
-            --bg: #0f172a;
+            --bg: url('temni_fon_chata.png');
             --surface: #1e293b;
             --primary: #6366f1;
             --text: #ffffff;
@@ -40,7 +40,7 @@
         }
         /* Светлая тема */
         :root.light-theme {
-            --bg: #e2e8f0;
+            --bg: url('svetli_fon chata.png')
             --surface: #f1f5f9;
             --primary: #4f46e5;
             --text: #0f172a;
@@ -57,28 +57,7 @@
         :root {
             --bg-gradient: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
         }
-        .messages {
-            position: relative;
-            overflow: hidden;
-        }
-        .messages::before {
-            content: "";
-            position: absolute;
-            inset: 0;
-            z-index: 0;
-            background-image: var(--chat-bg, url('svetli_fon chata.png'));
-            background-size: cover;
-            background-position: center;
-            background-repeat: no-repeat;
-            pointer-events: none;
-            transition: background-image 0.3s ease;
-        }
-        :root, [data-theme="light"], .theme-light {
-            --chat-bg: url('svetli_fon chata.png');
-        }
-            [data-theme="dark"], .theme-dark {
-            --chat-bg: url('temni_fon_chata.png');
-        }
+
         html, body {
             overflow: hidden;
             height: 100%;
