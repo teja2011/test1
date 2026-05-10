@@ -57,6 +57,28 @@
         :root {
             --bg-gradient: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
         }
+        .messages {
+            position: relative;
+            overflow: hidden;
+        }
+        .messages::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            z-index: 0;
+            background-image: var(--chat-bg, url('svetli_fon chata.png'));
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            pointer-events: none;
+            transition: background-image 0.3s ease;
+        }
+        :root, [data-theme="light"], .theme-light {
+            --chat-bg: url('svetli_fon chata.png');
+        }
+            [data-theme="dark"], .theme-dark {
+            --chat-bg: url('temni_fon_chata.png');
+        }
         html, body {
             overflow: hidden;
             height: 100%;
