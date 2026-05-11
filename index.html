@@ -1392,7 +1392,7 @@
                 padding-left: max(10px, env(safe-area-inset-left));
                 padding-right: max(10px, env(safe-area-inset-right));
                 padding-bottom: max(16px, env(safe-area-inset-bottom));
-                background: var(--surface);
+                background: transparent !important;
             }
             .messages {
                 padding-left: max(10px, env(safe-area-inset-left));
@@ -1536,23 +1536,32 @@
         #chatPanel {
             position: relative;
             overflow: hidden;
-            background: #0f172a;
+            background: #0f172a !important;
         }
 
         #chatPanel::before {
             content: "";
             position: absolute;
-            inset: 0;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
             z-index: 0;
             background-image: url("./temni_fon_chata.png");
             background-size: cover;
             background-position: center;
             background-repeat: no-repeat;
-            opacity: 1;
+            opacity: 1 !important;
         }
 
         :root.light-theme #chatPanel::before {
             background-image: url("./svetli_fon_chata.png");
+        }
+
+        #chatPanel .chat-header,
+        #chatPanel .messages,
+        #chatPanel .chat-input-area {
+            background: transparent !important;
         }
 
         #chatPanel > * {
@@ -4699,7 +4708,7 @@
                     renderNotificationsList();
                 })
                 .catch(function(err) {
-                    console.error('Ошибк�� загрузки списка уведомлений:', err);
+                    console.error('Ошибка загрузки списка уведомлений:', err);
                     document.getElementById('notificationsList').innerHTML = 
                         '<div style="text-align: center; padding: 20px; color: var(--error);">Ошибка загрузки: ' + escapeHtml(err.message) + '</div>';
                 });
