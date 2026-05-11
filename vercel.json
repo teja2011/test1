@@ -25,6 +25,10 @@
       "dest": "/index.py"
     },
     {
+      "src": "/(.*\\.(png|jpg|jpeg|webp|gif|svg))",
+      "dest": "/dist/product/$1"
+    },
+    {
       "src": "/(.*)",
       "dest": "/index.py"
     }
