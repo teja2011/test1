@@ -772,7 +772,8 @@
         }
         .chat-input-area {
             padding: 16px 20px;
-            background: var(--surface);
+            background: rgba(30, 30, 40, 0.7);
+            backdrop-filter: blur(10px);
             border-top: 1px solid var(--border);
             display: none;
             gap: 12px;
@@ -1392,7 +1393,8 @@
                 padding-left: max(10px, env(safe-area-inset-left));
                 padding-right: max(10px, env(safe-area-inset-right));
                 padding-bottom: max(16px, env(safe-area-inset-bottom));
-                background: transparent !important;
+                background: rgba(30, 30, 40, 0.6) !important;
+                backdrop-filter: blur(8px);
             }
             .messages {
                 padding-left: max(10px, env(safe-area-inset-left));
@@ -1536,37 +1538,25 @@
         #chatPanel {
             position: relative;
             overflow: hidden;
-            background: #0f172a !important;
+            background: url("temni_fon_chata.png?v=2") center/cover no-repeat !important;
         }
 
-        #chatPanel::before {
-            content: "";
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            z-index: 0;
-            background-image: url("./temni_fon_chata.png");
-            background-size: cover;
-            background-position: center;
-            background-repeat: no-repeat;
-            opacity: 1 !important;
+        :root.light-theme #chatPanel {
+            background: url("svetli_fon_chata.png?v=2") center/cover no-repeat !important;
         }
 
-        :root.light-theme #chatPanel::before {
-            background-image: url("./svetli_fon_chata.png");
+        #chatPanel .chat-header {
+            background: rgba(30, 30, 40, 0.6) !important;
+            backdrop-filter: blur(8px);
         }
 
-        #chatPanel .chat-header,
-        #chatPanel .messages,
         #chatPanel .chat-input-area {
-            background: transparent !important;
+            background: rgba(30, 30, 40, 0.6) !important;
+            backdrop-filter: blur(8px);
         }
 
-        #chatPanel > * {
-            position: relative;
-            z-index: 1;
+        #chatPanel .messages {
+            background: transparent !important;
         }
         </style>
 
