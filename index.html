@@ -400,13 +400,13 @@
             flex: 1;
             display: flex;
             flex-direction: column;
-            background: var(--bg);
             overflow: hidden;
             min-height: 0;
         }
         .chat-header {
             padding: 18px 20px;
-            background: var(--surface);
+            background: rgba(30, 30, 40, 0.8);
+            backdrop-filter: blur(10px);
             border-bottom: 1px solid var(--border);
             display: flex;
             align-items: center;
@@ -1532,7 +1532,7 @@
             #loadingText {
                 transition: opacity 0.3s ease;
             }
-        /* ===== ФОН ЧАТА (переключается по light-theme) ===== */
+        /* ===== ФОН ЧАТА ===== */
         #chatPanel {
             position: relative;
             overflow: hidden;
@@ -1542,25 +1542,16 @@
             content: "";
             position: absolute;
             inset: 0;
-            z-index: 0;
-
+            z-index: -1;
             background-image: url("temni_fon_chata.png");
             background-size: cover;
             background-position: center;
             background-repeat: no-repeat;
-
-            opacity: 1;
-            pointer-events: none;
+            background-attachment: local;
         }
 
         :root.light-theme #chatPanel::before {
             background-image: url("svetli_fon chata.png");
-        }
-
-        /* Контент чата поверх фона */
-        #chatPanel > * {
-            position: relative;
-            z-index: 1;
         }
         </style>
 
