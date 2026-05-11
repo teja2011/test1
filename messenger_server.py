@@ -18,7 +18,7 @@ import base64
 import os
 
 def _generate_vapid_keys():
-    """Генерируем настоящие VAPID ключи через py_vapid"""
+
     try:
         from py_vapid import Vapid
         v = Vapid()
@@ -383,7 +383,6 @@ def generate_avatar_color():
     import random
     return random.choice(['6366f1', '10b981', 'f59e0b', 'ef4444', '8b5cf6', 'ec4899', '0891b2', '7c3aed'])
 
-# Получаем директорию текущего файла для корректной работы на Vercel
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 HTML_TEMPLATE_PATH = os.path.join(CURRENT_DIR, 'index.html')
 HTML_TEMPLATE = open(HTML_TEMPLATE_PATH, 'r', encoding='utf-8').read() if os.path.exists(HTML_TEMPLATE_PATH) else '<h1>index.html not found</h1>'
@@ -400,6 +399,13 @@ def chat():
     user = get_current_user()
     if not user:
         return redirect('/')
+    return render_template_string(HTML_TEMPLATE)
+
+@app.route('/<path:filename>')
+def static_file(filename):
+    # Обслуживание статических файлов (изображения для фона)
+    if filename.endswith(('.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg', '.ico')):
+        return send_from_directory(CURRENT_DIR, filename)
     return render_template_string(HTML_TEMPLATE)
 
 @app.route('/api/me')
@@ -1827,10 +1833,6 @@ def api_push_unsubscribe():
     finally:
         db.close()
 
-# ============================================
-# === DEVICE MANAGEMENT ===
-# ============================================
-
 @app.route('/api/devices', methods=['GET'])
 def api_devices():
     """Получить список устройств текущего пользователя"""
@@ -1879,9 +1881,6 @@ def api_device_delete(device_id):
     finally:
         db.close()
 
-# ============================================
-# === CALL (Audio Call) API ===
-# ============================================
 
 @app.route('/api/call/offer', methods=['POST'])
 def api_call_offer():
@@ -2212,7 +2211,6 @@ def api_call_reject():
 
 @app.route('/api/call/ice/<call_id>', methods=['GET'])
 def api_call_ice_poll(call_id):
-    """Получить ICE candidates"""
     import json
     db = get_db()
     try:
@@ -2259,7 +2257,6 @@ def api_call_end():
             was_ringing = call.status == 'ringing'
             caller_name = None
 
-            # Если звонок был ringing (не отвечен) — отправляем пропущенный
             if was_ringing:
                 try:
                     caller = db.query(User).filter_by(id=call.caller_id).first()
