@@ -21,6 +21,14 @@
       "dest": "/js/$1"
     },
     {
+      "src": "/temni_fon_chata.png",
+      "dest": "/dist/product/temni_fon_chata.png"
+    },
+    {
+      "src": "/svetli_fon chata.png",
+      "dest": "/dist/product/svetli_fon chata.png"
+    },
+    {
       "src": "/api/(.*)",
       "dest": "/index.py"
     },
