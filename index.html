@@ -1532,6 +1532,36 @@
             #loadingText {
                 transition: opacity 0.3s ease;
             }
+        /* ===== ФОН ЧАТА (переключается по light-theme) ===== */
+        #chatPanel {
+            position: relative;
+            overflow: hidden;
+        }
+
+        #chatPanel::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            z-index: 0;
+
+            background-image: url("temni_fon_chata.png");
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+
+            opacity: 1;
+            pointer-events: none;
+        }
+
+        :root.light-theme #chatPanel::before {
+            background-image: url("svetli_fon chata.png");
+        }
+
+        /* Контент чата поверх фона */
+        #chatPanel > * {
+            position: relative;
+            z-index: 1;
+        }
         </style>
 
         <div id="chatPage" class="chat-page" style="display: none;">
