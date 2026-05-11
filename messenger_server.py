@@ -401,13 +401,6 @@ def chat():
         return redirect('/')
     return render_template_string(HTML_TEMPLATE)
 
-@app.route('/<path:filename>')
-def static_file(filename):
-    # Обслуживание статических файлов (изображения для фона)
-    if filename.endswith(('.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg', '.ico')):
-        return send_from_directory(CURRENT_DIR, filename)
-    return render_template_string(HTML_TEMPLATE)
-
 @app.route('/api/me')
 def api_me():
     user = get_current_user()
@@ -2299,4 +2292,3 @@ if __name__ == '__main__':
     print("\n=== Сервер запущен ===")
     print("Откройте в браузере: http://localhost:5000")
     print("Для остановки нажмите Ctrl+C\n")
-    app.run(host='0.0.0.0', port=5000, debug=False)
