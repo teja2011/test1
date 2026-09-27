@@ -71,13 +71,10 @@ if KEEPALIVE_URL:
 
 DATABASE_URL = os.environ.get('DATABASE_URL')
 
-if DATABASE_URL:
-    if DATABASE_URL.startswith('mysql://'):
-        DATABASE_URL = DATABASE_URL.replace('mysql://', 'mysql+pymysql://', 1)
-        print("[DB] Auto-fixed URL: mysql:// -> mysql+pymysql://")
-    if 'mysql' in DATABASE_URL and 'ssl_ca=' not in DATABASE_URL:
-        # Подсказка, если забыл про SSL
-        print("[DB] WARNING: No ssl_ca param in URL. Aiven requires SSL.")
+# Авто-фикс: принудительно PyMySQL
+if DATABASE_URL and DATABASE_URL.startswith('mysql://'):
+    DATABASE_URL = DATABASE_URL.replace('mysql://', 'mysql+pymysql://', 1)
+    print("[DB] Auto-fixed URL: mysql:// -> mysql+pymysql://")
 
 if DATABASE_URL:
     connect_args = {
@@ -86,9 +83,21 @@ if DATABASE_URL:
     }
     
     if 'ssl_ca=' in DATABASE_URL:
-        connect_args['ssl'] = {'ca': '/var/task/ca.pem'}
-    elif 'ssl-mode=' in DATABASE_URL or 'ssl=true' in DATABASE_URL.lower():
-        connect_args['ssl'] = {'ssl': True}
+        from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+        
+        parsed = urlparse(DATABASE_URL)
+        params = parse_qs(parsed.query)
+        ssl_ca = params.pop('ssl_ca', [None])[0]
+        
+        new_query = urlencode({k: v[0] for k, v in params.items()})
+        DATABASE_URL = urlunparse((
+            parsed.scheme, parsed.netloc, parsed.path,
+            parsed.params, new_query, parsed.fragment
+        ))
+        
+        if ssl_ca:
+            connect_args['ssl_ca'] = ssl_ca
+            print(f"[DB] SSL CA: {ssl_ca}")
     
     engine = create_engine(
         DATABASE_URL,
@@ -103,6 +112,7 @@ if DATABASE_URL:
 else:
     engine = create_engine('sqlite:///messenger.db', echo=False, connect_args={'check_same_thread': False})
     print("[DB] Using SQLite (fallback)")
+
 
 CLOUDINARY_CONFIGURED = False
 cloudinary = None
