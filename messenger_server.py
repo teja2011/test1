@@ -71,10 +71,6 @@ if KEEPALIVE_URL:
 
 DATABASE_URL = os.environ.get('DATABASE_URL')
 
-@app.route('/favicon.ico')
-def serve_favicon():
-    return send_from_directory(os.path.abspath(os.path.dirname(__file__)), 'Jetesk.png', mimetype='image/png')
-    
 # Авто-фикс: принудительно PyMySQL
 if DATABASE_URL and DATABASE_URL.startswith('mysql://'):
     DATABASE_URL = DATABASE_URL.replace('mysql://', 'mysql+pymysql://', 1)
