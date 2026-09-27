@@ -2339,6 +2339,13 @@ function hideCallUI() {
 
 setInterval(function() { if (!isInCall && currentUser) checkIncomingCalls(); }, 2000);
 
+function openSettingsModal() {
+    showSettingsTab();
+}
+
+function closeSettingsModal() {
+    showChatsTab();
+}
 
 document.addEventListener('DOMContentLoaded', function() {
     var messagesContainer = document.getElementById('messagesContainer');
