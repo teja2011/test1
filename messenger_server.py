@@ -1238,35 +1238,49 @@ def api_upload_avatar():
         file = request.files['avatar']
         if file.filename == '':
             return jsonify({'success': False, 'message': 'No file selected'})
-        import io
         filename = file.filename if file.filename else 'unknown.png'
         ext = os.path.splitext(filename)[1].lower()
         if ext not in ['.jpg', '.jpeg', '.png', '.gif', '.webp']:
             return jsonify({'success': False, 'message': 'Неверный формат'})
+
         file_data = file.read()
-        file_io = io.BytesIO(file_data)
         avatar_url = None
-        if CLOUDINARY_CONFIGURED:
+        cloud_name = os.environ.get('CLOUDINARY_CLOUD_NAME', '')
+        upload_preset = os.environ.get('CLOUDINARY_UPLOAD_PRESET', 'avatars_unsigned')
+
+        if cloud_name:
             try:
-                upload_result = cloudinary_uploader.upload(
-                    file_io, folder='avatars',
-                    public_id=f"user_{user.id}_{uuid.uuid4().hex[:8]}",
-                    resource_type='image'
-                )
-                avatar_url = upload_result['secure_url'].replace('/upload/', '/upload/w_200,h_200,c_fill,g_face/', 1)
+                upload_url = f"https://api.cloudinary.com/v1_1/{cloud_name}/image/upload"
+                files = {'file': ('avatar' + ext, file_data)}
+                data = {
+                    'upload_preset': upload_preset,
+                    'folder': 'avatars',
+                    'public_id': f"user_{user.id}_{uuid.uuid4().hex[:8]}"
+                }
+                resp = requests.post(upload_url, files=files, data=data, timeout=30)
+                if resp.status_code == 200:
+                    result = resp.json()
+                    avatar_url = result.get('secure_url', '')
+                    if avatar_url:
+                        avatar_url = avatar_url.replace('/upload/', '/upload/w_200,h_200,c_fill,g_face/', 1)
+                else:
+                    print(f"[Cloudinary] Upload failed: {resp.status_code} {resp.text[:300]}")
+                    return jsonify({'success': False, 'message': f'Cloudinary: {resp.text[:200]}'})
             except Exception as e:
+                print(f"[Cloudinary] Exception: {e}")
                 return jsonify({'success': False, 'message': f'Cloudinary error: {str(e)}'})
         else:
-            filename = f"avatar_{user.id}_{uuid.uuid4().hex[:8]}{ext}"
+            filename_save = f"avatar_{user.id}_{uuid.uuid4().hex[:8]}{ext}"
             upload_dir = os.path.join(os.path.dirname(__file__), 'avatars')
             try:
                 os.makedirs(upload_dir, exist_ok=True)
             except Exception as e:
                 return jsonify({'success': False, 'message': f'Error creating dir: {str(e)}'})
-            avatar_path = os.path.join(upload_dir, filename)
+            avatar_path = os.path.join(upload_dir, filename_save)
             with open(avatar_path, 'wb') as f:
                 f.write(file_data)
-            avatar_url = f"/avatars/{filename}"
+            avatar_url = f"/avatars/{filename_save}"
+
         user.avatar_url = avatar_url
         db.commit()
         return jsonify({'success': True, 'avatar_url': avatar_url})
