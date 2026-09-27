@@ -380,6 +380,25 @@ def chat():
         return redirect('/')
     return render_template_string(HTML_TEMPLATE)
 
+@app.route('/api/debug-cloudinary')
+def api_debug_cloudinary():
+    cn = os.environ.get('CLOUDINARY_CLOUD_NAME', '')
+    ak = os.environ.get('CLOUDINARY_API_KEY', '')
+    asec = os.environ.get('CLOUDINARY_API_SECRET', '')
+    return jsonify({
+        'cloud_name_set': bool(cn),
+        'cloud_name_len': len(cn),
+        'cloud_name_last': cn[-4:] if cn else '',
+        'api_key_set': bool(ak),
+        'api_key_len': len(ak),
+        'api_key_last': ak[-4:] if ak else '',
+        'api_secret_set': bool(asec),
+        'api_secret_len': len(asec),
+        'api_secret_last': asec[-4:] if asec else '',
+        'is_vercel': bool(os.environ.get('VERCEL')),
+        'all_env_keys_with_cloudinary': [k for k in os.environ.keys() if 'CLOUDINARY' in k.upper()]
+    })
+
 @app.route('/api/me')
 def api_me():
     user = get_current_user()
