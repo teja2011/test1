@@ -3,12 +3,12 @@ import { resolve } from 'path';
 
 export default defineConfig({
   root: resolve(__dirname),
-  
   build: {
     outDir: 'dist',
     assetsDir: 'assets',
     minify: 'terser',
     sourcemap: false,
+    chunkSizeWarningLimit: 500,
     rollupOptions: {
       input: {
         main: resolve(__dirname, 'index.html'),
@@ -18,30 +18,13 @@ export default defineConfig({
       output: {
         entryFileNames: 'assets/[name]-[hash].js',
         chunkFileNames: 'assets/[name]-[hash].js',
-        assetFileNames: 'assets/[name]-[hash].[ext]'
-      }
-    },
-    // Tree shaking включен по умолчанию
-    treeShake: true,
-    // Разделение кода
-    rollupOptions: {
-      output: {
+        assetFileNames: 'assets/[name]-[hash].[ext]',
         manualChunks: {
           vendor: ['virtual-scroll']
         }
       }
-    },
-    // Сжатие gzip
-    brotliSize: true,
-    chunkSizeWarningLimit: 500
+    }
   },
-
-  server: {
-    port: 3000,
-    open: true
-  },
-
-  optimizeDeps: {
-    include: []
-  }
+  server: { port: 3000, open: true },
+  optimizeDeps: { include: [] }
 });
