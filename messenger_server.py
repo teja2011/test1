@@ -72,6 +72,24 @@ if KEEPALIVE_URL:
 DATABASE_URL = os.environ.get('DATABASE_URL')
 
 if DATABASE_URL:
+    if DATABASE_URL.startswith('mysql://'):
+        DATABASE_URL = DATABASE_URL.replace('mysql://', 'mysql+pymysql://', 1)
+        print("[DB] Auto-fixed URL: mysql:// -> mysql+pymysql://")
+    if 'mysql' in DATABASE_URL and 'ssl_ca=' not in DATABASE_URL:
+        # Подсказка, если забыл про SSL
+        print("[DB] WARNING: No ssl_ca param in URL. Aiven requires SSL.")
+
+if DATABASE_URL:
+    connect_args = {
+        'charset': 'utf8mb4',
+        'use_unicode': True,
+    }
+    
+    if 'ssl_ca=' in DATABASE_URL:
+        connect_args['ssl'] = {'ca': '/var/task/ca.pem'}
+    elif 'ssl-mode=' in DATABASE_URL or 'ssl=true' in DATABASE_URL.lower():
+        connect_args['ssl'] = {'ssl': True}
+    
     engine = create_engine(
         DATABASE_URL,
         echo=False,
@@ -79,15 +97,9 @@ if DATABASE_URL:
         pool_recycle=280,
         pool_size=5,
         max_overflow=10,
-        connect_args={
-            'charset': 'utf8mb4',
-            'use_unicode': True,
-            'ssl': {
-    'ca': 'ca.pem'  
-}  
-        }
+        connect_args=connect_args
     )
-    print(f"[DB] Using MySQL (Aiven): {DATABASE_URL[:40]}...")
+    print(f"[DB] Using MySQL: {DATABASE_URL[:60]}...")
 else:
     engine = create_engine('sqlite:///messenger.db', echo=False, connect_args={'check_same_thread': False})
     print("[DB] Using SQLite (fallback)")
