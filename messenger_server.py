@@ -99,13 +99,20 @@ if DATABASE_URL:
             connect_args['ssl_ca'] = ssl_ca
             print(f"[DB] SSL CA: {ssl_ca}")
     
+        if DATABASE_URL:
+            connect_args = {
+                'charset': 'utf8mb4',
+                'use_unicode': True,
+         }
+            if 'ssl_ca=' in DATABASE_URL:
+             connect_args['ssl'] = {'ca': '/var/task/ca.pem'}
     engine = create_engine(
         DATABASE_URL,
         echo=False,
         pool_pre_ping=True,
         pool_recycle=280,
-        pool_size=5,
-        max_overflow=10,
+        pool_size=1,
+        max_overflow=0,
         connect_args=connect_args
     )
     print(f"[DB] Using MySQL: {DATABASE_URL[:60]}...")
