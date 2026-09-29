@@ -315,16 +315,24 @@ function updateChatHeader() {
 
 function showChatView() {
     var usersPanel = document.getElementById('usersPanel');
+    var contactsPanel = document.getElementById('contactsPanel');
+    var settingsPanel = document.getElementById('settingsPanel');
     var backBtn = document.getElementById('backToChatsBtn');
     var chatInputArea = document.querySelector('.chat-input-area');
     var usersFooter = document.getElementById('usersFooter');
+
     if (usersPanel) usersPanel.classList.add('hidden');
+    if (contactsPanel) contactsPanel.classList.remove('show');
+    if (settingsPanel) settingsPanel.classList.remove('show');
     if (backBtn) backBtn.style.display = 'flex';
+
     if (chatInputArea) {
         chatInputArea.classList.remove('hidden');
         chatInputArea.classList.add('visible');
     }
-    if (usersFooter && window.innerWidth <= 900) usersFooter.classList.add('chat-hidden');
+    if (usersFooter && window.innerWidth <= 900) {
+        usersFooter.classList.add('chat-hidden');
+    }
 }
 
 function showUsersList() {
@@ -344,54 +352,232 @@ function showUsersList() {
 
 function initTabs() {
     var chatsTabBtn = document.getElementById('chatsTabBtn');
+    var contactsTabBtn = document.getElementById('contactsTabBtn');
     var settingsTabBtn = document.getElementById('settingsTabBtn');
     if (chatsTabBtn) chatsTabBtn.classList.add('active');
+    if (contactsTabBtn) contactsTabBtn.classList.remove('active');
     if (settingsTabBtn) settingsTabBtn.classList.remove('active');
 }
 
 function showChatsTab() {
     var usersPanel = document.getElementById('usersPanel');
+    var contactsPanel = document.getElementById('contactsPanel');
     var settingsPanel = document.getElementById('settingsPanel');
     var chatsTabBtn = document.getElementById('chatsTabBtn');
+    var contactsTabBtn = document.getElementById('contactsTabBtn');
     var settingsTabBtn = document.getElementById('settingsTabBtn');
     var backBtn = document.getElementById('backToChatsBtn');
     var chatInputArea = document.querySelector('.chat-input-area');
     var usersFooter = document.getElementById('usersFooter');
-    if (usersPanel) usersPanel.classList.remove('hidden');
+
+    if (usersPanel) {
+        usersPanel.classList.remove('hidden');
+        if (window.innerWidth > 900) usersPanel.style.display = 'flex';
+    }
+    if (contactsPanel) contactsPanel.classList.remove('show');
     if (settingsPanel) settingsPanel.classList.remove('show');
+
     if (chatsTabBtn) chatsTabBtn.classList.add('active');
+    if (contactsTabBtn) contactsTabBtn.classList.remove('active');
     if (settingsTabBtn) settingsTabBtn.classList.remove('active');
+
     if (backBtn) backBtn.style.display = 'none';
     if (chatInputArea) {
         chatInputArea.classList.add('hidden');
         chatInputArea.classList.remove('visible');
     }
-    if (usersFooter && window.innerWidth <= 900) usersFooter.classList.remove('chat-hidden');
+    if (usersFooter && window.innerWidth <= 900) {
+        usersFooter.classList.remove('chat-hidden');
+    }
     showFooter();
 }
 
 function showSettingsTab() {
     var usersPanel = document.getElementById('usersPanel');
+    var contactsPanel = document.getElementById('contactsPanel');
     var settingsPanel = document.getElementById('settingsPanel');
     var chatsTabBtn = document.getElementById('chatsTabBtn');
+    var contactsTabBtn = document.getElementById('contactsTabBtn');
     var settingsTabBtn = document.getElementById('settingsTabBtn');
     var chatInputArea = document.querySelector('.chat-input-area');
     var usersFooter = document.getElementById('usersFooter');
-    if (usersPanel) usersPanel.classList.add('hidden');
+
+    if (usersPanel) {
+        usersPanel.classList.add('hidden');
+        if (window.innerWidth > 900) usersPanel.style.display = 'none';
+    }
+    if (contactsPanel) contactsPanel.classList.remove('show');
     if (settingsPanel) settingsPanel.classList.add('show');
-    if (settingsTabBtn) settingsTabBtn.classList.add('active');
+
     if (chatsTabBtn) chatsTabBtn.classList.remove('active');
+    if (contactsTabBtn) contactsTabBtn.classList.remove('active');
+    if (settingsTabBtn) settingsTabBtn.classList.add('active');
+
     if (chatInputArea) {
         chatInputArea.classList.add('hidden');
         chatInputArea.classList.remove('visible');
     }
-    if (usersFooter && window.innerWidth <= 900) usersFooter.classList.add('chat-hidden');
+    if (usersFooter && window.innerWidth <= 900) {
+        usersFooter.classList.add('chat-hidden');
+    }
     hideFooter();
     renderSettingsContent();
 }
 
 function hideFooter() { var f = document.getElementById('usersFooter'); if (f) f.classList.add('hidden'); }
 function showFooter() { var f = document.getElementById('usersFooter'); if (f) f.classList.remove('hidden'); }
+
+var contacts = [];
+
+function loadContacts() {
+    apiFetch('/api/contacts')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            contacts = Array.isArray(data) ? data : [];
+            var el = document.getElementById('contactsCount');
+            if (el) el.textContent = contacts.length;
+            renderContacts();
+        })
+        .catch(function(err) { console.error('loadContacts:', err); });
+}
+
+function renderContacts() {
+    var container = document.getElementById('contactsContent');
+    if (!container) return;
+    if (!contacts.length) {
+        container.innerHTML = '<div class="empty-contacts-hint">Пока нет контактов.<br><br>Откройте профиль пользователя в чате<br>и нажмите «Добавить контакт».</div>';
+        return;
+    }
+    var searchInput = document.getElementById('contactSearchInput');
+    var query = searchInput ? searchInput.value.trim().toLowerCase() : '';
+    var html = '';
+    var shown = 0;
+    contacts.forEach(function(user) {
+        var name = (user.username || '').toLowerCase();
+        var jt = (user.jt_username || '').toLowerCase();
+        if (query && name.indexOf(query) === -1 && jt.indexOf(query.replace('@','')) === -1) return;
+        shown++;
+        var statusHtml;
+        if (user.is_online) statusHtml = '<div class="user-status" style="color: rgb(29, 180, 24);">В сети</div>';
+        else if (user.last_seen) statusHtml = '<div class="user-last-seen">Был(а) ' + escapeHtml(user.last_seen) + '</div>';
+        else statusHtml = '<div class="user-last-seen">Был(а) недавно</div>';
+        var displayName = escapeHtml(user.username);
+        if (user.jt_username) displayName += ' <span style="color: var(--text-secondary); font-size: 12px;">@' + escapeHtml(user.jt_username) + '</span>';
+        var avatarStyle = 'background: #' + (user.avatar_color || '6366f1') + ';';
+        var avatarContent = (user.username || '?').charAt(0).toUpperCase();
+        if (user.avatar_url) {
+            avatarStyle = 'background-image: url(' + user.avatar_url + '); background-size: cover; background-position: center;';
+            avatarContent = '';
+        }
+        html += '<div class="user-item ' + (selectedUserId === user.id ? 'active' : '') + '" onclick="selectContact(' + user.id + ', \'' + user.username.replace(/'/g, "\\'") + '\')">' +
+            '<div class="user-avatar" style="' + avatarStyle + '">' + avatarContent + '</div>' +
+            '<div class="user-info-list">' +
+                '<div class="user-name">' + displayName + '</div>' +
+                statusHtml +
+            '</div>' +
+            (user.unread_count > 0 ? '<div class="unread-badge">' + (user.unread_count > 99 ? '99+' : user.unread_count) + '</div>' : '') +
+            '</div>';
+    });
+    if (!shown) {
+        html = '<div class="empty-contacts-hint">Ничего не найдено</div>';
+    }
+    container.innerHTML = html;
+}
+
+function filterContacts() {
+    renderContacts();
+}
+
+function selectContact(userId, username) {
+    selectUser(userId, username);
+}
+
+function showContactsTab() {
+    var usersPanel = document.getElementById('usersPanel');
+    var contactsPanel = document.getElementById('contactsPanel');
+    var settingsPanel = document.getElementById('settingsPanel');
+    var chatsTabBtn = document.getElementById('chatsTabBtn');
+    var contactsTabBtn = document.getElementById('contactsTabBtn');
+    var settingsTabBtn = document.getElementById('settingsTabBtn');
+    var backBtn = document.getElementById('backToChatsBtn');
+    var chatInputArea = document.querySelector('.chat-input-area');
+    var usersFooter = document.getElementById('usersFooter');
+
+    if (usersPanel) {
+        usersPanel.classList.add('hidden');
+        if (window.innerWidth > 900) usersPanel.style.display = 'none';
+    }
+    if (settingsPanel) settingsPanel.classList.remove('show');
+    if (contactsPanel) contactsPanel.classList.add('show');
+
+    if (chatsTabBtn) chatsTabBtn.classList.remove('active');
+    if (contactsTabBtn) contactsTabBtn.classList.add('active');
+    if (settingsTabBtn) settingsTabBtn.classList.remove('active');
+
+    if (backBtn) backBtn.style.display = 'none';
+    if (chatInputArea) {
+        chatInputArea.classList.add('hidden');
+        chatInputArea.classList.remove('visible');
+    }
+    if (usersFooter && window.innerWidth <= 900) {
+        usersFooter.classList.remove('chat-hidden');
+    }
+    showFooter();
+    loadContacts();
+}
+
+function checkIfContact(userId) {
+    return apiFetch('/api/contacts/check/' + userId)
+        .then(function(r) { return r.json(); })
+        .then(function(d) { return !!(d && d.is_contact); })
+        .catch(function() { return false; });
+}
+
+function resetAddContactButton() {
+    var wrap = document.getElementById('addContactBtnWrap');
+    var btn = document.getElementById('addContactBtn');
+    if (!wrap || !btn) return;
+    wrap.classList.remove('dissolving');
+    wrap.style.display = '';
+    wrap.style.maxHeight = '100px';
+    wrap.style.marginBottom = '16px';
+    wrap.style.opacity = '1';
+    wrap.style.transform = 'translateY(0) scale(1)';
+    btn.disabled = false;
+    btn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style="vertical-align: middle; margin-right: 8px;"><path d="M15 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm-9-2V7H4v3H1v2h3v3h2v-3h3v-2H6zm9 4c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg><span>Добавить контакт</span>';
+}
+
+function addContactFromProfile() {
+    if (selectedUserId <= 0) return;
+    var btn = document.getElementById('addContactBtn');
+    var wrap = document.getElementById('addContactBtnWrap');
+    if (!btn || !wrap) return;
+    btn.disabled = true;
+    btn.innerHTML = '<span>⏳ Добавляем...</span>';
+    apiFetch('/api/contacts/add', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({contact_id: selectedUserId})
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(result) {
+        if (result.success) {
+            wrap.classList.add('dissolving');
+            setTimeout(function() { wrap.style.display = 'none'; }, 450);
+            loadContacts();
+            if (typeof showToast === 'function') showToast('✅ Контакт добавлен');
+        } else {
+            btn.disabled = false;
+            btn.innerHTML = '<span>Добавить контакт</span>';
+            alert('Ошибка: ' + (result.message || 'не удалось добавить'));
+        }
+    })
+    .catch(function(err) {
+        btn.disabled = false;
+        btn.innerHTML = '<span>Добавить контакт</span>';
+        alert('Ошибка: ' + err.message);
+    });
+}
 
 function renderSettingsContent() {
     var content = document.getElementById('settingsContent');
@@ -511,6 +697,7 @@ function openChatProfile() {
         if (users[i].id === selectedUserId) { targetUser = users[i]; break; }
     }
     if (!targetUser) return;
+
     var avatarEl = document.getElementById('chatProfileAvatar');
     var avatarImg = document.getElementById('chatProfileAvatarImg');
     var avatarLetter = document.getElementById('chatProfileAvatarLetter');
@@ -543,7 +730,13 @@ function openChatProfile() {
     if (targetUser.bio) bioEl.innerHTML = '<span>' + escapeHtml(targetUser.bio) + '</span>';
     else bioEl.innerHTML = '<span>Не указано</span>';
     updateChatProfileMute();
+    resetAddContactButton();
     document.getElementById('chatProfileModal').style.display = 'flex';
+    checkIfContact(selectedUserId).then(function(isContact) {
+        var wrap = document.getElementById('addContactBtnWrap');
+        if (!wrap) return;
+        if (isContact) wrap.style.display = 'none';
+    });
 }
 
 function closeChatProfile(e) {

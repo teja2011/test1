@@ -1,7 +1,7 @@
 # pyright: reportGeneralTypeIssues=none, reportArgumentType=none, reportAssignmentType=none, reportAttributeAccessIssue=none, reportOptionalMemberAccess=none
 from flask import Flask, render_template_string, request, jsonify, redirect, make_response, send_from_directory
 from werkzeug.utils import secure_filename
-from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, ForeignKey, or_, and_, text
+from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, ForeignKey, or_, and_, text, UniqueConstraint
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 from datetime import datetime, timedelta
 import secrets
@@ -254,6 +254,14 @@ class PushSubscription(Base):
     auth = Column(String(100), nullable=False)
     created_at = Column(DateTime, default=utc_now)
     last_used = Column(DateTime, nullable=True)
+
+class Contact(Base):
+    __tablename__ = 'contacts'
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
+    contact_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
+    created_at = Column(DateTime, default=utc_now)
+    __table_args__ = (UniqueConstraint('user_id', 'contact_id', name='uq_user_contact'),)
 
 def init_db():
     check_and_create_tables()
@@ -1132,7 +1140,6 @@ def api_delete_account():
     if not user:
         return jsonify({'success': False, 'message': 'Not authorized'}), 401
     user_id = user.id
-    db.close()
     try:
         conn = engine.connect()
         try:
@@ -1150,6 +1157,7 @@ def api_delete_account():
                     except Exception:
                         pass
             for sql in [
+                "DELETE FROM contacts           WHERE user_id = :uid OR contact_id = :uid",
                 "DELETE FROM push_subscriptions WHERE user_id = :uid",
                 "DELETE FROM devices            WHERE user_id = :uid",
                 "DELETE FROM calls              WHERE caller_id = :uid OR callee_id = :uid",
@@ -1424,6 +1432,94 @@ def api_push_unsubscribe():
     except Exception as e:
         db.rollback()
         return jsonify({'success': False, 'message': str(e)}), 500
+    finally:
+        db.close()
+
+@app.route('/api/contacts')
+def api_contacts():
+    user = get_current_user()
+    if not user:
+        return jsonify([])
+    db = get_db()
+    try:
+        contact_rows = db.query(Contact).filter_by(user_id=user.id).all()
+        result = []
+        for c in contact_rows:
+            u = db.query(User).filter_by(id=c.contact_id).first()
+            if not u:
+                continue
+            is_online = False
+            last_seen_str = None
+            if u.last_seen is not None:
+                is_online = (utc_now() - u.last_seen).total_seconds() < 10
+                last_seen_msk = to_msk(u.last_seen)
+                last_seen_str = last_seen_msk.strftime('%d.%m %H:%M') if last_seen_msk else None
+            unread_count = db.query(Message).filter(
+                Message.sender_id == u.id,
+                Message.recipient_id == user.id,
+                Message.status != 'read'
+            ).count()
+            result.append({
+                'id': u.id, 'username': u.username,
+                'avatar_color': u.avatar_color or '6366f1',
+                'avatar_url': u.avatar_url, 'jt_username': u.jt_username,
+                'bio': u.bio or '',
+                'is_online': is_online, 'last_seen': last_seen_str,
+                'unread_count': unread_count
+            })
+        return jsonify(result)
+    finally:
+        db.close()
+
+@app.route('/api/contacts/add', methods=['POST'])
+def api_contacts_add():
+    user = get_current_user()
+    if not user:
+        return jsonify({'success': False, 'message': 'Not authorized'}), 401
+    data = request.json or {}
+    contact_id = data.get('contact_id')
+    if not contact_id or int(contact_id) == user.id:
+        return jsonify({'success': False, 'message': 'Invalid contact_id'})
+    db = get_db()
+    try:
+        existing = db.query(Contact).filter_by(user_id=user.id, contact_id=int(contact_id)).first()
+        if existing:
+            return jsonify({'success': True, 'already': True})
+        c = Contact(user_id=user.id, contact_id=int(contact_id))
+        db.add(c)
+        db.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        db.rollback()
+        return jsonify({'success': False, 'message': str(e)})
+    finally:
+        db.close()
+
+@app.route('/api/contacts/<int:contact_id>', methods=['DELETE'])
+def api_contacts_delete(contact_id):
+    user = get_current_user()
+    if not user:
+        return jsonify({'success': False, 'message': 'Not authorized'}), 401
+    db = get_db()
+    try:
+        db.query(Contact).filter_by(user_id=user.id, contact_id=contact_id).delete()
+        db.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        db.rollback()
+        return jsonify({'success': False, 'message': str(e)})
+    finally:
+        db.close()
+
+@app.route('/api/contacts/check/<int:contact_id>')
+def api_contacts_check(contact_id):
+    user = get_current_user()
+    if not user:
+        return jsonify({'is_contact': False})
+    db = get_db()
+    try:
+        exists = db.query(Contact).filter_by(user_id=user.id, contact_id=contact_id).first()
+        return jsonify({'is_contact': bool(exists)})
     finally:
         db.close()
 

@@ -135,6 +135,17 @@
                     <div class="users-list" id="usersList">
                     </div>
                 </aside>
+                <aside class="contacts-panel" id="contactsPanel">
+    <div class="users-header">
+        <span>📇 Контакты (<span id="contactsCount">0</span>)</span>
+    </div>
+    <div class="search-container" style="padding: 12px;">
+        <input type="text" id="contactSearchInput" placeholder="🔍 Поиск контактов..."
+               style="width: 100%; padding: 10px 14px; border: 2px solid var(--border); border-radius: 10px; font-size: 14px; background: var(--bg); color: var(--text);"
+               oninput="filterContacts()">
+    </div>
+    <div class="settings-content" id="contactsContent"></div>
+</aside>
 
                 <div class="users-footer chat-hidden" id="usersFooter">
                     <div class="nav-item active" id="chatsTabBtn" onclick="showChatsTab()">
@@ -169,7 +180,14 @@
                         <span class="nav-label">Настройки</span>
                     </div>
                 </div>
-
+                <div class="nav-item" id="contactsTabBtn" onclick="showContactsTab()">
+                     <span class="nav-icon">
+                         <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
+                            <path d="M20 0H4v2h16V0zM4 24h16v-2H4v2zM20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-8 12.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5zm5.5 3.5h-11v-.5c0-1.83 3.67-2.75 5.5-2.75s5.5.92 5.5 2.75V20z"/>
+                         </svg>
+                         </span>
+                         <span class="nav-label">Контакты</span>
+                </div>
                 <aside class="settings-panel" id="settingsPanel">
                     <div class="settings-header">
                         <span>
@@ -301,7 +319,14 @@
                     <span>ещё</span>
                 </button>
             </div>
-
+<div id="addContactBtnWrap" class="add-contact-wrap">
+    <button id="addContactBtn" class="add-contact-btn" onclick="addContactFromProfile()">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style="vertical-align: middle; margin-right: 8px;">
+            <path d="M15 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm-9-2V7H4v3H1v2h3v3h2v-3h3v-2H6zm9 4c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+        </svg>
+        <span>Добавить контакт</span>
+    </button>
+</div>
             <div class="chat-profile-info">
                 <div class="chat-profile-info-row">
                     <div class="chat-profile-info-label">имя пользователя</div>
