@@ -16,6 +16,7 @@ import smtplib
 from dotenv import load_dotenv
 import base64
 import json
+import pymysql
 
 def _generate_vapid_keys():
     try:
@@ -80,6 +81,7 @@ if DATABASE_URL:
     connect_args = {
         'charset': 'utf8mb4',
         'use_unicode': True,
+        'client_flag': pymysql.constants.CLIENT.MULTI_STATEMENTS,
     }
     
     if 'ssl_ca=' in DATABASE_URL:
