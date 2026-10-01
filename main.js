@@ -2881,3 +2881,19 @@ window.addEventListener('beforeunload', function() {
         try { navigator.sendBeacon('/api/logout'); } catch(e) {}
     }
 });
+
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('message', function(event) {
+        if (event.data && event.data.type === 'SW_UPDATED') {
+            console.log('[SW] Новая версия — перезагружаю');
+            location.reload();
+        }
+    });
+    
+    var refreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', function() {
+        if (refreshing) return;
+        refreshing = true;
+        window.location.reload();
+    });
+}

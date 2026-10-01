@@ -1,8 +1,8 @@
 // Service Worker для PWA - кэширование, offline, push
-const CACHE_NAME = 'jetesk-v2';
-const STATIC_CACHE = 'jetesk-static-v2';
-const DYNAMIC_CACHE = 'jetesk-dynamic-v2';
-const API_CACHE = 'jetesk-api-v2';
+const CACHE_NAME = 'jetesk-v4';
+const STATIC_CACHE = 'jetesk-static-v4';
+const DYNAMIC_CACHE = 'jetesk-dynamic-v4';
+const API_CACHE = 'jetesk-api-v4';
 
 const STATIC_ASSETS = [
     '/manifest.json',
@@ -12,49 +12,29 @@ const STATIC_ASSETS = [
 const MAX_CACHE_SIZE = 50;
 const MAX_CACHE_AGE = 7 * 24 * 60 * 60 * 1000; // 7 дней
 
-// Установка Service Worker
 self.addEventListener('install', (event) => {
-    console.log('[SW] Install');
+    self.skipWaiting();
     event.waitUntil(
-        caches.open(STATIC_CACHE)
-            .then((cache) => {
-                console.log('[SW] Кэширование статики');
-                // Кэшируем только основные файлы, игнорируя ошибки
-                return Promise.all(
-                    STATIC_ASSETS.map(url => {
-                        return fetch(url)
-                            .then(response => {
-                                if (response.ok) {
-                                    return cache.put(url, response);
-                                }
-                            })
-                            .catch(err => {
-                                console.log('[SW] Не закэшировано:', url, err);
-                            });
-                    })
-                );
-            })
-            .then(() => self.skipWaiting())
-            .catch((err) => {
-                console.log('[SW] Ошибка кэширования:', err);
-            })
+        caches.open(STATIC_CACHE).then((cache) => {
+            return Promise.all(
+                STATIC_ASSETS.map(url => {
+                    return fetch(url).then(r => { if (r.ok) cache.put(url, r); }).catch(() => {});
+                })
+            );
+        })
     );
 });
 
-// Активация Service Worker
 self.addEventListener('activate', (event) => {
-    console.log('[SW] Activate');
     event.waitUntil(
-        caches.keys()
-            .then((keys) => {
-                const oldCaches = keys.filter((key) =>
-                    key !== STATIC_CACHE && key !== DYNAMIC_CACHE && key !== API_CACHE
-                );
-                return Promise.all([
-                    ...oldCaches.map((key) => caches.delete(key)),
-                    self.clients.claim()
-                ]);
-            })
+        caches.keys().then((keys) => {
+            return Promise.all([
+                ...keys.map(k => caches.delete(k)),
+                self.clients.claim()
+            ]);
+        }).then(() => self.clients.matchAll()).then(clients => {
+            clients.forEach(client => client.postMessage({ type: 'SW_UPDATED' }));
+        })
     );
 });
 
@@ -219,11 +199,24 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    // Навигационные запросы - полностью пропускаем, пусть браузер обрабатывает сам
-    // Это решает проблему с редиректами Vercel
+    
     if (request.mode === 'navigate' || request.destination === 'document' || request.headers.get('accept')?.includes('text/html')) {
-        return;
-    }
+    event.respondWith(fetch(request).catch(() => caches.match('/')));
+    return;
+}
+
+if (url.pathname === '/main.js' || url.pathname === '/styles.css' || url.pathname === '/sw.js') {
+    event.respondWith(
+        fetch(request, { cache: 'no-store' }).then(r => {
+            if (r.ok) {
+                var clone = r.clone();
+                caches.open(STATIC_CACHE).then(c => c.put(request, clone));
+            }
+            return r;
+        }).catch(() => caches.match(request))
+    );
+    return;
+}
 
     // Пропускаем внешние запросы (кроме Google Analytics)
     if (url.origin !== self.location.origin && !url.hostname.includes('googletagmanager')) {
