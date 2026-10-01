@@ -87,20 +87,83 @@ function apiFetch(url, options) {
 
 function openMessagesDB() {
     return new Promise(function(resolve, reject) {
-        var request = indexedDB.open(DB_NAME, DB_VERSION);
+        var request = indexedDB.open(DB_NAME, 2);
         request.onupgradeneeded = function(event) {
             var db = event.target.result;
             if (!db.objectStoreNames.contains(STORE_NAME)) {
                 db.createObjectStore(STORE_NAME, { keyPath: 'id' });
             }
+            if (!db.objectStoreNames.contains('outbox')) {
+                db.createObjectStore('outbox', { keyPath: 'local_id', autoIncrement: true });
+            }
+            if (!db.objectStoreNames.contains('settings')) {
+                db.createObjectStore('settings', { keyPath: 'key' });
+            }
         };
         request.onsuccess = function(event) {
             messagesDB = event.target.result;
+            console.log('[IndexedDB] База v2 открыта');
             resolve(messagesDB);
         };
         request.onerror = function(event) {
+            console.error('[IndexedDB] Ошибка:', event.target.error);
             reject(event.target.error);
         };
+    });
+}
+
+function addToOutbox(item) {
+    if (!messagesDB) return Promise.resolve(null);
+    return new Promise(function(resolve, reject) {
+        var tx = messagesDB.transaction(['outbox'], 'readwrite');
+        var store = tx.objectStore('outbox');
+        var record = Object.assign({}, item, { created_at: Date.now() });
+        var req = store.add(record);
+        req.onsuccess = function(e) { resolve(e.target.result); };
+        req.onerror = function(e) { reject(e.target.error); };
+    });
+}
+
+function getOutbox() {
+    if (!messagesDB) return Promise.resolve([]);
+    return new Promise(function(resolve, reject) {
+        var tx = messagesDB.transaction(['outbox'], 'readonly');
+        var store = tx.objectStore('outbox');
+        var req = store.getAll();
+        req.onsuccess = function(e) { resolve(e.target.result || []); };
+        req.onerror = function(e) { reject(e.target.error); };
+    });
+}
+
+function removeFromOutbox(localId) {
+    if (!messagesDB) return Promise.resolve();
+    return new Promise(function(resolve, reject) {
+        var tx = messagesDB.transaction(['outbox'], 'readwrite');
+        var store = tx.objectStore('outbox');
+        var req = store.delete(localId);
+        req.onsuccess = function() { resolve(); };
+        req.onerror = function(e) { reject(e.target.error); };
+    });
+}
+
+function setSetting(key, value) {
+    if (!messagesDB) return Promise.resolve();
+    return new Promise(function(resolve) {
+        var tx = messagesDB.transaction(['settings'], 'readwrite');
+        var store = tx.objectStore('settings');
+        store.put({ key: key, value: value });
+        tx.oncomplete = function() { resolve(); };
+    });
+}
+
+function getSetting(key) {
+    if (!messagesDB) return Promise.resolve(null);
+    return new Promise(function(resolve) {
+        var tx = messagesDB.transaction(['settings'], 'readonly');
+        var store = tx.objectStore('settings');
+        var req = store.get(key);
+        req.onsuccess = function(e) { resolve(e.target.result ? e.target.result.value : null); };
+        req.onerror = function() { resolve(null); };
     });
 }
 
@@ -184,6 +247,22 @@ function loadLastMessages() {
             applySearchFilter();
         })
         .catch(function(err) { console.error('loadLastMessages:', err); });
+}
+
+function getStatusSvg(status) {
+    if (status === 'sending') {
+        return '<svg class="status-svg" viewBox="0 0 24 24" fill="currentColor"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>';
+    }
+    if (status === 'queued') {
+        return '<svg class="status-svg" viewBox="0 0 24 24" fill="currentColor"><path d="M4 12l1.41 1.41L11 7.83V20h2V7.83l5.58 5.59L20 12l-8-8-8 8z"/></svg>';
+    }
+    if (status === 'sent') {
+        return '<svg class="status-svg" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>';
+    }
+    if (status === 'read' || status === 'delivered') {
+        return '<svg class="status-svg" viewBox="0 0 24 24" fill="currentColor"><path d="M18 7l-1.41-1.41-6.34 6.34 1.41 1.41L18 7zm4.24-1.41L11.66 16.17 7.48 12l-1.41 1.41L11.66 19l12-12-1.42-1.41zM.41 13.41L6 19l1.41-1.41L1.83 12 .41 13.41z"/></svg>';
+    }
+    return '';
 }
 
 function escapeHtml(text) {
@@ -851,12 +930,11 @@ function renderMessages() {
                 '</div>';
         }
         else bubbleContent = escapeHtml(msg.content);
-        var statusIcon = '';
-        if (msg.is_mine) {
-            if (msg.status === 'read' || msg.status === 'delivered') statusIcon = ' ✓✓';
-            else if (msg.status === 'sent') statusIcon = ' ✓';
-            else if (msg.status === 'sending') statusIcon = ' ⏳';
-        }
+        var statusHtml = '';
+            if (msg.is_mine) {
+                statusHtml = '<span class="msg-status" data-status="' + (msg.status || '') + '">' + getStatusSvg(msg.status) + '</span>';
+            }
+        
         var moscowTime = msg.created_at;
         if (msg.created_at && typeof msg.created_at === 'string' && msg.created_at.includes(':')) {
             var parts = msg.created_at.split(':');
@@ -869,7 +947,7 @@ function renderMessages() {
             (msg.is_mine ? '<button class="msg-more-btn" onclick="openMsgMenu(' + msg.id + ', event)" title="Ещё">⋮</button>' : '') +
             '<div class="message-bubble">' + bubbleContent + '</div>' +
             '</div>' +
-            '<div class="message-time">' + escapeHtml(msg.sender) + ' • ' + moscowTime + statusIcon + '</div>' +
+            '<div class="message-time">' + escapeHtml(msg.sender) + ' • ' + moscowTime + statusHtml + '</div>' +
             '</div>';
     });
     container.innerHTML = html;
@@ -989,6 +1067,7 @@ function restoreVoicePlaybackState() {
 function sendMessage() {
     var input = document.getElementById('messageInput');
     var content = input.value.trim();
+
     if (selectedFileData) {
         var formData = new FormData();
         var fileToSend = selectedFile;
@@ -1005,6 +1084,7 @@ function sendMessage() {
         formData.append('file', fileToSend, selectedFileType === 'image' ? 'image.jpg' : 'file');
         formData.append('recipient_id', selectedUserId === 0 ? null : selectedUserId);
         formData.append('file_type', selectedFileType);
+
         var btn = document.getElementById('sendBtn');
         btn.disabled = true;
         var tempId = 'temp_' + Date.now();
@@ -1014,6 +1094,7 @@ function sendMessage() {
             created_at: new Date().toLocaleTimeString('ru-RU', {hour: '2-digit', minute:'2-digit'}),
             is_mine: true, file_type: selectedFileType, status: 'sending'
         });
+
         apiFetch('/api/send-file', { method: 'POST', body: formData })
         .then(function(r) { if (!r.ok) throw new Error('Ошибка: ' + r.status); return r.json(); })
         .then(function(result) {
@@ -1021,31 +1102,104 @@ function sendMessage() {
             else alert('Ошибка: ' + (result.message || 'Неизвестная ошибка'));
             btn.disabled = false;
         })
-        .catch(function(err) { alert('Ошибка: ' + err.message); btn.disabled = false; });
+        .catch(function(err) {
+            alert('Ошибка: ' + err.message + '. Проверьте подключение.');
+            btn.disabled = false;
+        });
         return;
     }
+
     if (!content) return;
+
     var btn = document.getElementById('sendBtn');
     btn.disabled = true;
     input.value = '';
-    var tempId = 'temp_' + Date.now();
+
+    var tempId = 'temp_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+    var now = new Date().toLocaleTimeString('ru-RU', {hour: '2-digit', minute:'2-digit'});
+
     addMessageToDOM({
-        id: tempId, sender: currentUser.username, content: content,
-        created_at: new Date().toLocaleTimeString('ru-RU', {hour: '2-digit', minute:'2-digit'}),
-        is_mine: true, file_type: null, status: 'sending'
+        id: tempId,
+        sender: currentUser.username,
+        content: content,
+        created_at: now,
+        is_mine: true,
+        file_type: null,
+        status: navigator.onLine ? 'sending' : 'queued'
     });
-    var payload = { recipient_id: selectedUserId === 0 ? null : selectedUserId, content: content };
-    apiFetch('/api/send', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) })
+
+    var outboxItem = {
+        temp_id: tempId,
+        recipient_id: selectedUserId === 0 ? null : selectedUserId,
+        content: content,
+        created_at: now
+    };
+
+    addToOutbox(outboxItem).then(function(localId) {
+        outboxItem.local_id = localId;
+        if (navigator.onLine) {
+            sendOutboxItem(outboxItem);
+        }
+    });
+
+    btn.disabled = false;
+}
+
+function sendOutboxItem(item) {
+    var payload = { recipient_id: item.recipient_id, content: item.content };
+    return apiFetch('/api/send', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload)
+    })
     .then(function(r) {
-        if (!r.ok) return r.text().then(function(text) { throw new Error('HTTP ' + r.status + ': ' + text); });
+        if (!r.ok) return r.text().then(function(t) { throw new Error('HTTP ' + r.status + ': ' + t); });
         return r.json();
     })
     .then(function(result) {
-        if (result.success) { loadMessages(); loadLastMessages(); }
-        else alert('Ошибка: ' + (result.message || 'Неизвестная ошибка'));
-        btn.disabled = false;
+        if (result.success) {
+            var el = document.querySelector('.message[data-id="' + item.temp_id + '"]');
+            if (el) {
+                el.setAttribute('data-id', result.id);
+                el.classList.remove('status-queued');
+                var statusEl = el.querySelector('.msg-status');
+                if (statusEl) {
+                    statusEl.setAttribute('data-status', 'sent');
+                    statusEl.innerHTML = getStatusSvg('sent');
+                }
+            }
+            removeFromOutbox(item.local_id);
+            loadLastMessages();
+            return true;
+        }
+        throw new Error(result.message || 'Send failed');
     })
-    .catch(function(err) { console.error('Send error:', err); alert('Ошибка: ' + err.message); btn.disabled = false; });
+    .catch(function(err) {
+        console.warn('[Outbox] Send failed:', err.message);
+        var el = document.querySelector('.message[data-id="' + item.temp_id + '"]');
+        if (el) {
+            el.classList.add('status-queued');
+            var statusEl = el.querySelector('.msg-status');
+            if (statusEl) {
+                statusEl.setAttribute('data-status', 'queued');
+                statusEl.innerHTML = getStatusSvg('queued');
+            }
+        }
+        return false;
+    });
+}
+
+function flushOutbox() {
+    if (!navigator.onLine) return Promise.resolve();
+    return getOutbox().then(function(items) {
+        if (!items.length) return;
+        console.log('[Outbox] Flushing', items.length, 'items');
+        var chain = Promise.resolve();
+        items.forEach(function(item) {
+            chain = chain.then(function() { return sendOutboxItem(item); });
+        });
+        return chain;
+    });
 }
 
 function sendVoiceOrText() {
@@ -1366,14 +1520,28 @@ function updateWaveform() {
     animationFrame = requestAnimationFrame(updateWaveform);
 }
 
+function getStatusSvg(status) {
+    if (status === 'sending') {
+        return '<svg class="status-svg" viewBox="0 0 24 24" fill="currentColor"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>';
+    }
+    if (status === 'queued') {
+        return '<svg class="status-svg" viewBox="0 0 24 24" fill="currentColor"><path d="M4 12l1.41 1.41L11 7.83V20h2V7.83l5.58 5.59L20 12l-8-8-8 8z"/></svg>';
+    }
+    if (status === 'sent') {
+        return '<svg class="status-svg" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>';
+    }
+    if (status === 'read' || status === 'delivered') {
+        return '<svg class="status-svg" viewBox="0 0 24 24" fill="currentColor"><path d="M18 7l-1.41-1.41-6.34 6.34 1.41 1.41L18 7zm4.24-1.41L11.66 16.17 7.48 12l-1.41 1.41L11.66 19l12-12-1.42-1.41zM.41 13.41L6 19l1.41-1.41L1.83 12 .41 13.41z"/></svg>';
+    }
+    return '';
+}
+
 function addMessageToDOM(msg) {
     var container = document.getElementById('messagesContainer');
     if (!container) return;
     var emptyState = container.querySelector('.empty-state');
     if (emptyState) emptyState.remove();
-    var statusIcon = ' ⏳';
-    if (msg.status === 'sent') statusIcon = ' ✓';
-    else if (msg.status === 'delivered' || msg.status === 'read') statusIcon = ' ✓✓';
+    var statusHtml = '<span class="msg-status" data-status="' + (msg.status || 'sending') + '">' + getStatusSvg(msg.status || 'sending') + '</span>';
     var bubbleContent = '';
     if (msg.file_type === 'image') bubbleContent = '<img src="' + msg.content + '" class="chat-img" onclick="window.open(this.src)">';
     else if (msg.file_type === 'file') bubbleContent = '<a href="' + msg.content + '" download class="file-attachment">📄 Файл</a>';
@@ -1392,7 +1560,7 @@ function addMessageToDOM(msg) {
         '<svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>' +
         '</button>' +
         '<div class="message-bubble" style="padding-right: 36px;">' + bubbleContent + '</div>' +
-        '<div class="message-time">' + escapeHtml(msg.sender) + ' • ' + moscowTime + statusIcon + '</div>' +
+        '<div class="message-time">' + escapeHtml(msg.sender) + ' • ' + moscowTime + statusHtml + '</div>' +
         '</div>';
     container.insertAdjacentHTML('beforeend', html);
     scrollToBottom();
@@ -2539,6 +2707,40 @@ function openSettingsModal() {
 function closeSettingsModal() {
     showChatsTab();
 }
+
+window.addEventListener('online', function() {
+    console.log('[Net] Online');
+    var banner = document.getElementById('offlineBanner');
+    var textEl = document.getElementById('offlineBannerText');
+    var iconEl = banner ? banner.querySelector('.banner-icon') : null;
+    if (banner && textEl) {
+        banner.classList.add('reconnected', 'show');
+        if (iconEl) iconEl.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:middle;"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>';
+        textEl.textContent = 'Подключение восстановлено';
+        setTimeout(function() {
+            banner.classList.remove('show', 'reconnected');
+            if (iconEl) iconEl.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:middle;"><path d="M2 22h20V2L2 22zm18-2h-3V9.83l3-3V20zm-6 0h-3v-3l3-3V20zm-6 0H3v-1.17l6-6V20z"/></svg>';
+            textEl.textContent = 'Нет подключения — сообщения отправятся позже';
+        }, 2500);
+    }
+    flushOutbox();
+    loadMessages();
+    loadLastMessages();
+});
+
+window.addEventListener('offline', function() {
+    console.log('[Net] Offline');
+    var banner = document.getElementById('offlineBanner');
+    if (banner) banner.classList.add('show');
+});
+
+document.addEventListener('visibilitychange', function() {
+    if (!document.hidden && currentUser && navigator.onLine) {
+        flushOutbox();
+        loadMessages();
+        loadLastMessages();
+    }
+});
 
 document.addEventListener('DOMContentLoaded', function() {
     var messagesContainer = document.getElementById('messagesContainer');

@@ -1191,3 +1191,53 @@ body {
     cursor: default;
     opacity: 0.6;
 }
+.offline-banner {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    background: #ef4444;
+    color: white;
+    text-align: center;
+    padding: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    z-index: 99999;
+    transform: translateY(-100%);
+    transition: transform 0.3s ease;
+    pointer-events: none;
+}
+.offline-banner.show {
+    transform: translateY(0);
+}
+.offline-banner.reconnected {
+    background: #10b981;
+}
+.message.status-queued .message-time {
+    color: #f59e0b;
+}
+.offline-banner .banner-icon {
+    display: inline-flex;
+    align-items: center;
+    vertical-align: middle;
+    margin-right: 6px;
+}
+.offline-banner .banner-icon svg {
+    fill: currentColor;
+}
+.msg-status {
+    display: inline-flex;
+    align-items: center;
+    vertical-align: middle;
+    margin-left: 4px;
+}
+.msg-status .status-svg {
+    width: 14px;
+    height: 14px;
+    display: block;
+    vertical-align: middle;
+}
+.message.status-queued .msg-status,
+.message .msg-status[data-status="queued"] {
+    color: #f59e0b;
+}
