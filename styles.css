@@ -1240,3 +1240,34 @@ body {
 .message .msg-status[data-status="queued"] {
     color: #f59e0b;
 }
+.contacts-panel-embedded {
+    display: none;
+    flex-direction: column;
+    flex: 1;
+    overflow: hidden;
+    min-height: 0;
+}
+.contacts-panel-embedded.show {
+    display: flex;
+}
+.contacts-header {
+    padding: 18px 20px;
+    background: rgba(45, 45, 60, 0.5);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+    font-weight: 600;
+    font-size: 16px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+}
+:root.light-theme .contacts-header {
+    background: rgba(255, 255, 255, 0.7);
+}
+.contacts-list {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 10px;
+    min-height: 0;
+}
