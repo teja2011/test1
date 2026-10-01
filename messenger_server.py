@@ -286,34 +286,41 @@ def get_db():
     return sessionmaker(bind=engine)()
 
 def init_tables():
+    print(f"[DB] init_tables() start")
+    print(f"[DB] DATABASE_URL = {(DATABASE_URL or 'NOT SET')[:80]}")
     try:
         with engine.connect() as conn:
             pass
+        print("[DB] Connection OK")
+
         Base.metadata.create_all(engine)
+        print("[DB] create_all done")
+
         with engine.connect() as conn:
             if DATABASE_URL:
                 result = conn.execute(text("""
                     SELECT table_name FROM information_schema.tables
                     WHERE table_schema = DATABASE()
                       AND table_name IN ('users', 'messages', 'notifications',
-                                         'calls', 'devices', 'push_subscriptions')
+                                         'calls', 'devices', 'push_subscriptions', 'contacts')
                 """))
             else:
                 result = conn.execute(text("""
                     SELECT name FROM sqlite_master WHERE type='table' AND name IN
-                    ('users', 'messages', 'notifications', 'calls', 'devices', 'push_subscriptions')
+                    ('users', 'messages', 'notifications', 'calls', 'devices', 'push_subscriptions', 'contacts')
                 """))
             tables = [row[0] for row in result.fetchall()]
-            if len(tables) < 6:
+            print(f"[DB] Tables found: {tables}")
+            if len(tables) < 7:
+                print(f"[DB] Only {len(tables)} tables found, expected 7")
                 return False
+        print("[DB] All tables OK")
         return True
-    except Exception:
+    except Exception as e:
+        import traceback
+        print(f"[DB] init_tables ERROR: {e}")
+        traceback.print_exc()
         return False
-
-if not init_tables():
-    pass
-else:
-    _tables_initialized = True
 
 def ensure_tables():
     global _tables_initialized
