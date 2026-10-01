@@ -204,11 +204,7 @@ function getMessagesFromCache(userId) {
     });
 }
 
-function checkRealConnection() {
-    return fetch('/api/me', { method: 'GET', cache: 'no-store', credentials: 'include' })
-        .then(function(r) { return true; })
-        .catch(function() { return false; });
-}
+
 
 function init() {
     updateOfflineBanner();
@@ -310,9 +306,13 @@ function renderUsers() {
         }
         var displayName = escapeHtml(user.username);
         if (user.jt_username) displayName += ' <span style="color: var(--text-secondary); font-size: 12px;">@' + escapeHtml(user.jt_username) + '</span>';
-        var avatarStyle = 'background: #' + user.avatar_color + ';', avatarContent = user.username.charAt(0).toUpperCase();
-        if (user.avatar_url) { avatarStyle = 'background-image: url(' + user.avatar_url + '); background-size: cover; background-position: center;'; avatarContent = ''; }
-        html += '<div class="user-item ' + (selectedUserId === user.id ? 'active' : '') + '" onclick="selectUser(' + user.id + ', \'' + user.username.replace(/'/g, "\\'") + '\')"><div class="user-avatar" style="' + avatarStyle + '">' + avatarContent + '</div><div class="user-info-list"><div class="user-name">' + displayName + '</div>' + statusHtml + lastMessageHtml + '</div>' + (user.unread_count > 0 ? '<div class="unread-badge">' + (user.unread_count > 99 ? '99+' : user.unread_count) + '</div>' : '') + '</div>';
+        var color = (user.avatar_color || '6366f1').replace('#', '').trim() || '6366f1';
+        var avatarStyle = 'background-color: #' + color + ' !important; color: #ffffff !important;';
+        var avatarContent = user.username.charAt(0).toUpperCase();
+        if (user.avatar_url) {
+            avatarStyle = 'background-color: #' + color + ' !important; background-image: url(' + user.avatar_url + ') !important; background-size: cover !important; background-position: center !important; color: transparent !important;';
+            avatarContent = '';
+        }
     });
     container.innerHTML = html;
 }
@@ -389,8 +389,7 @@ function updateChatHeader() {
             avatarEl.textContent = '';
         } else {
             avatarEl.style.backgroundImage = '';
-            avatarEl.style.background = '#' + (targetUser.avatar_color || '6366f1');
-            avatarEl.textContent = (targetUser.username || selectedUsername).charAt(0).toUpperCase();
+            avatarEl.style.background = '#' + ((targetUser.avatar_color || '6366f1').replace('#', '').trim() || '6366f1');            avatarEl.textContent = (targetUser.username || selectedUsername).charAt(0).toUpperCase();
             avatarEl.style.fontSize = '18px';
         }
     }
@@ -558,10 +557,11 @@ function renderContacts() {
         else statusHtml = '<div class="user-last-seen">Был(а) недавно</div>';
         var displayName = escapeHtml(user.username);
         if (user.jt_username) displayName += ' <span style="color: var(--text-secondary); font-size: 12px;">@' + escapeHtml(user.jt_username) + '</span>';
-        var avatarStyle = 'background: #' + (user.avatar_color || '6366f1') + ';';
+        var color = (user.avatar_color || '6366f1').replace('#', '').trim() || '6366f1';
+        var avatarStyle = 'background-color: #' + color + ' !important; color: #ffffff !important;';
         var avatarContent = (user.username || '?').charAt(0).toUpperCase();
         if (user.avatar_url) {
-            avatarStyle = 'background-image: url(' + user.avatar_url + '); background-size: cover; background-position: center;';
+            avatarStyle = 'background-color: #' + color + ' !important; background-image: url(' + user.avatar_url + ') !important; background-size: cover !important; background-position: center !important; color: transparent !important;';
             avatarContent = '';
         }
         html += '<div class="user-item ' + (selectedUserId === user.id ? 'active' : '') + '" onclick="selectContact(' + user.id + ', \'' + user.username.replace(/'/g, "\\'") + '\')">' +
@@ -806,8 +806,7 @@ function openChatProfile() {
             avatarLetter.style.display = 'block';
             avatarLetter.textContent = (targetUser.username || '').charAt(0).toUpperCase();
         }
-        avatarEl.style.background = '#' + (targetUser.avatar_color || '6366f1');
-    }
+            avatarEl.style.background = '#' + ((targetUser.avatar_color || '6366f1').replace('#', '').trim() || '6366f1');    }
     document.getElementById('chatProfileName').textContent = targetUser.username || '';
     var statusEl = document.getElementById('chatProfileStatus');
     if (targetUser.online || targetUser.is_online) {
@@ -1971,7 +1970,7 @@ function finishShowChat() {
         headerAvatar.textContent = '';
     } else {
         headerAvatar.style.backgroundImage = '';
-        headerAvatar.style.background = '#6366f1';
+        headerAvatar.style.background = '#' + ((currentUser.avatar_color || '6366f1').replace('#', '') || '6366f1');
         headerAvatar.textContent = currentUser.username.charAt(0).toUpperCase();
     }
     var displayName = currentUser.username;
@@ -1988,27 +1987,29 @@ function finishShowChat() {
     if (onlineInterval) clearInterval(onlineInterval);
     if (lastMessagesInterval) clearInterval(lastMessagesInterval);
     if (messagesInterval) clearInterval(messagesInterval);
+    function schedulePolling() {
+    if (onlineInterval) clearInterval(onlineInterval);
+    if (lastMessagesInterval) clearInterval(lastMessagesInterval);
+    if (messagesInterval) clearInterval(messagesInterval);
+    var usersEvery = document.hidden ? 10000 : 3000;
+    var msgEvery = document.hidden ? 15000 : 5000;
     onlineInterval = setInterval(function() {
-        updateOnlineStatus();
-        loadUsers();
-    }, 2000);
-    lastMessagesInterval = setInterval(function() { loadLastMessages(); }, 3000);
+        if (!document.hidden) {
+            updateOnlineStatus();
+            loadUsers();
+        }
+    }, usersEvery);
+    lastMessagesInterval = setInterval(function() {
+        if (!document.hidden) loadLastMessages();
+    }, msgEvery);
     messagesInterval = setInterval(function() {
-        if (currentLoadUserId !== null && currentLoadUserId === selectedUserId) checkNewMessages();
-    }, 5000);
-    initTabs();
-    showFooter();
-    showChatsTab();
+        if (!document.hidden && currentLoadUserId !== null && currentLoadUserId === selectedUserId) {
+            checkNewMessages();
+        }
+    }, msgEvery);
 }
-
-var resizeTimeout;
-window.addEventListener('resize', function() {
-    clearTimeout(resizeTimeout);
-    resizeTimeout = setTimeout(function() { scrollToBottom(); }, 300);
-});
-
-var lastKnownMessageCount = 0;
-var notifiedMsgIds = {};
+schedulePolling();
+}
 
 function checkNewMessages() {
     var url = selectedUserId === 0 ? '/api/messages' : '/api/messages/' + selectedUserId;
@@ -2860,3 +2861,23 @@ if (document.readyState === 'loading') {
 } else {
     init();
 }
+
+document.addEventListener('visibilitychange', function() {
+    if (document.hidden && currentUser) {
+        try {
+            navigator.sendBeacon('/api/logout');
+        } catch(e) {}
+    } else if (!document.hidden && currentUser) {
+        updateOnlineStatus();
+        loadUsers();
+        loadLastMessages();
+        flushOutbox();
+        schedulePolling();
+    }
+});
+
+window.addEventListener('beforeunload', function() {
+    if (currentUser) {
+        try { navigator.sendBeacon('/api/logout'); } catch(e) {}
+    }
+});
