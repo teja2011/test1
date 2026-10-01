@@ -181,8 +181,8 @@ body {
     min-height: 0;
 }
 .users-footer {
-    padding: 12px 8px;
-    padding-bottom: max(12px, env(safe-area-inset-bottom));
+    padding: 10px 6px;
+    padding-bottom: max(10px, env(safe-area-inset-bottom));
     border-top: 1px solid var(--border);
     display: flex;
     justify-content: space-around;
@@ -195,7 +195,6 @@ body {
     background: var(--surface);
     z-index: 100;
     width: 100%;
-    max-width: 100%;
     box-sizing: border-box;
 }
 .users-footer.hidden { display: none; }
@@ -208,15 +207,8 @@ body {
         width: 320px;
         border-right: 1px solid var(--border);
     }
-    .users-footer.chat-hidden {
-        display: flex !important;
-    }
-    .nav-item {
-        max-width: 70px;
-    }
-    .nav-label {
-        font-size: 10px;
-    }
+    .users-footer.chat-hidden { display: flex !important; }
+    .nav-item { max-width: 70px; }
 }
 
 .nav-item {
@@ -228,7 +220,7 @@ body {
     color: var(--text-secondary);
     cursor: pointer;
     transition: color 0.2s;
-    padding: 6px 4px;
+    padding: 6px 2px;
     border-radius: 8px;
     background: none;
     border: none;

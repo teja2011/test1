@@ -204,8 +204,23 @@ function getMessagesFromCache(userId) {
     });
 }
 
+function checkRealConnection() {
+    return fetch('/api/me', { method: 'GET', cache: 'no-store', credentials: 'include' })
+        .then(function(r) { return true; })
+        .catch(function() { return false; });
+}
+
 function init() {
     updateOfflineBanner();
+    checkRealConnection().then(function(ok) {
+        if (ok) {
+            var banner = document.getElementById('offlineBanner');
+            if (banner) banner.classList.remove('show');
+        } else {
+            var banner2 = document.getElementById('offlineBanner');
+            if (banner2) banner2.classList.add('show');
+        }
+    });
     loadTheme();
     openMessagesDB().catch(function(err) { console.error('[IndexedDB]', err); });
     apiFetch('/api/me')
@@ -2717,6 +2732,12 @@ function updateOfflineBanner() {
     } else {
         banner.classList.add('show');
     }
+}
+
+function checkRealConnection() {
+    return fetch('/api/me', { method: 'HEAD', cache: 'no-store' })
+        .then(function() { return true; })
+        .catch(function() { return false; });
 }
 
 window.addEventListener('online', function() {
