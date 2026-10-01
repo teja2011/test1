@@ -624,7 +624,7 @@ def api_users():
             last_seen_str = None
             if u.last_seen is not None:
                 time_diff = utc_now() - u.last_seen
-                is_online = time_diff.total_seconds() < 10
+                is_online = time_diff.total_seconds() < 7
                 last_seen_msk = to_msk(u.last_seen)
                 last_seen_str = last_seen_msk.strftime('%d.%m %H:%M') if last_seen_msk else None
             unread_count = db.query(Message).filter(
