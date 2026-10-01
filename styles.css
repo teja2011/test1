@@ -181,19 +181,22 @@ body {
     min-height: 0;
 }
 .users-footer {
-    padding: 16px 12px;
-    padding-bottom: max(16px, env(safe-area-inset-bottom));
+    padding: 12px 8px;
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
     border-top: 1px solid var(--border);
     display: flex;
-    justify-content: center;
+    justify-content: space-around;
     align-items: center;
-    gap: 48px;
+    gap: 0;
     position: fixed;
     bottom: 0;
     left: 0;
     right: 0;
     background: var(--surface);
     z-index: 100;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
 }
 .users-footer.hidden { display: none; }
 .users-footer.chat-hidden { display: none !important; }
@@ -205,27 +208,45 @@ body {
         width: 320px;
         border-right: 1px solid var(--border);
     }
-    .users-footer.chat-hidden { display: flex !important; }
+    .users-footer.chat-hidden {
+        display: flex !important;
+    }
+    .nav-item {
+        max-width: 70px;
+    }
+    .nav-label {
+        font-size: 10px;
+    }
 }
 
 .nav-item {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 4px;
+    gap: 2px;
     text-decoration: none !important;
     color: var(--text-secondary);
     cursor: pointer;
     transition: color 0.2s;
-    padding: 8px 16px;
+    padding: 6px 4px;
     border-radius: 8px;
     background: none;
     border: none;
     font-size: inherit;
+    flex: 1;
+    min-width: 0;
+    max-width: 80px;
 }
 .nav-item:hover { color: var(--text); background: rgba(99, 102, 241, 0.1); }
 .nav-item.active { color: var(--primary); }
-.nav-label { font-size: 11px; font-weight: 500; white-space: nowrap; }
+.nav-label {
+    font-size: 10px;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+}
 
 .sun-icon, .moon-icon {
     display: inline-flex;
