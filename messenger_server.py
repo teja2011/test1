@@ -107,17 +107,17 @@ if DATABASE_URL:
                 'use_unicode': True,
          }
             if 'ssl_ca=' in DATABASE_URL:
-             connect_args['ssl'] = {'ca': '/var/task/ca.pem'}
+             connect_args['ssl'] = {'ca': '/etc/ssl/certs/ca-certificates.crt'}
     engine = create_engine(
         DATABASE_URL,
         echo=False,
         pool_pre_ping=True,
-        pool_recycle=280,
-        pool_size=1,
-        max_overflow=0,
+        pool_recycle=280,  
+        pool_size=1,       
+        max_overflow=0,    
         connect_args=connect_args
     )
-    print(f"[DB] Using MySQL: {DATABASE_URL[:60]}...")
+    print(f"[DB] Using TiDB: {DATABASE_URL[:60]}...")
 else:
     engine = create_engine('sqlite:///messenger.db', echo=False, connect_args={'check_same_thread': False})
     print("[DB] Using SQLite (fallback)")
