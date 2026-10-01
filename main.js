@@ -205,6 +205,7 @@ function getMessagesFromCache(userId) {
 }
 
 function init() {
+    updateOfflineBanner();
     loadTheme();
     openMessagesDB().catch(function(err) { console.error('[IndexedDB]', err); });
     apiFetch('/api/me')
@@ -2708,6 +2709,16 @@ function closeSettingsModal() {
     showChatsTab();
 }
 
+function updateOfflineBanner() {
+    var banner = document.getElementById('offlineBanner');
+    if (!banner) return;
+    if (navigator.onLine) {
+        banner.classList.remove('show');
+    } else {
+        banner.classList.add('show');
+    }
+}
+
 window.addEventListener('online', function() {
     console.log('[Net] Online');
     var banner = document.getElementById('offlineBanner');
@@ -2821,6 +2832,7 @@ function showUpdateNotification() {
     setTimeout(function() { notification.remove(); }, 10000);
 }
 
+updateOfflineBanner();
 
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);

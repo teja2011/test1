@@ -1199,31 +1199,30 @@ body {
     background: #ef4444;
     color: white;
     text-align: center;
-    padding: 8px;
+    padding: 10px 12px;
     font-size: 13px;
     font-weight: 600;
     z-index: 99999;
-    transform: translateY(-100%);
-    transition: transform 0.3s ease;
-    pointer-events: none;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
 }
 .offline-banner.show {
-    transform: translateY(0);
+    display: flex;
 }
 .offline-banner.reconnected {
     background: #10b981;
 }
-.message.status-queued .message-time {
-    color: #f59e0b;
-}
 .offline-banner .banner-icon {
     display: inline-flex;
     align-items: center;
-    vertical-align: middle;
-    margin-right: 6px;
+    flex-shrink: 0;
 }
 .offline-banner .banner-icon svg {
     fill: currentColor;
+    display: block;
 }
 .msg-status {
     display: inline-flex;
